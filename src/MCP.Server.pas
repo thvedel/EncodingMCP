@@ -1,4 +1,4 @@
-unit MCP.Server;
+﻿unit MCP.Server;
 
 /// <summary>
 ///   MCP-server der dispatcher JSON-RPC requests til tool-handlers og
@@ -12,7 +12,8 @@ uses
   System.JSON,
   MCP.Stdio,
   MCP.Protocol,
-  MCP.Tools;
+  MCP.Tools,
+  Encoding.CacheManager;
 
 const
   MCP_PROTOCOL_VERSION = '2024-11-05';
@@ -27,13 +28,14 @@ type
   strict private
     FTransport: TStdioTransport;
     FRegistry: TToolRegistry;
+    FCacheManager: TCacheManager;
     FInitialized: Boolean;
     function HandleInitialize(AParams: TJSONValue): TJSONValue;
     function HandleToolsList: TJSONValue;
     function HandleToolsCall(AParams: TJSONValue): TJSONValue;
     procedure DispatchRequest(ARequest: TJsonRpcRequest);
   public
-    constructor Create(ARegistry: TToolRegistry);
+    constructor Create(ARegistry: TToolRegistry; ACacheManager: TCacheManager);
     destructor Destroy; override;
     /// <summary>
     ///   Hovedløkken. Returnerer når stdin lukkes.
@@ -48,11 +50,12 @@ uses
 
 { TMcpServer }
 
-constructor TMcpServer.Create(ARegistry: TToolRegistry);
+constructor TMcpServer.Create(ARegistry: TToolRegistry; ACacheManager: TCacheManager);
 begin
   inherited Create;
   FTransport := TStdioTransport.Create;
   FRegistry := ARegistry;
+  FCacheManager := ACacheManager;
   FInitialized := False;
 end;
 
@@ -160,7 +163,13 @@ begin
       else if ARequest.Method = 'tools/list' then
         LResultValue := HandleToolsList
       else if ARequest.Method = 'tools/call' then
-        LResultValue := HandleToolsCall(ARequest.Params)
+      begin
+        LResultValue := HandleToolsCall(ARequest.Params);
+        // Persistér evt. cache-ændringer efter hver tool-kørsel.
+        // FlushAll er idempotent og no-op hvis intet er dirty.
+        if FCacheManager <> nil then
+          FCacheManager.FlushAll;
+      end
       else if ARequest.Method = 'ping' then
         LResultValue := TJSONObject.Create
       else if ARequest.Method = 'shutdown' then

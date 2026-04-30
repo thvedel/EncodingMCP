@@ -1,4 +1,4 @@
-unit Tests.FileIO.Roundtrip;
+﻿unit Tests.FileIO.Roundtrip;
 
 /// <summary>
 ///   End-to-end tests af læs/skriv round-trip via FileIO units.
@@ -37,6 +37,8 @@ type
     procedure WriteUtf8WithBom_ProducesBom;
     [Test]
     procedure WriteToNewFile_DefaultsToUtf8WithBom;
+    [Test]
+    procedure FlushAll_WritesSidecarCache;
   end;
 
 implementation
@@ -181,6 +183,32 @@ begin
   // Forvent UTF-8 encoding af æ (C3 A6)
   Assert.AreEqual($C3, LBytes[Length(LBytes) - 2]);
   Assert.AreEqual($A6, LBytes[Length(LBytes) - 1]);
+end;
+
+procedure TRoundtripTests.FlushAll_WritesSidecarCache;
+var
+  LPath, LSidecar, LJsonText: string;
+begin
+  // Regressionstest for bug: cache skulle skrives efter FlushAll, ikke først
+  // ved destruction af TCacheManager.
+  LPath := MakeTempPath('Cached.pas');
+  WriteBytes(LPath, TBytes.Create($48, $65, $6A, $20, $E6, $F8, $E5));
+  ReadTextFile(LPath, FCacheManager);
+
+  LSidecar := TPath.Combine(FTempDir, '.windsurf-encoding.json');
+  // Før flush: sidecar findes ikke endnu (persistens er lazy)
+  Assert.IsFalse(TFile.Exists(LSidecar),
+    'Sidecar burde ikke eksistere før FlushAll');
+
+  FCacheManager.FlushAll;
+
+  Assert.IsTrue(TFile.Exists(LSidecar),
+    'FlushAll skulle have skrevet sidecar-cachen');
+  LJsonText := TFile.ReadAllText(LSidecar);
+  Assert.Contains(LJsonText, 'Cached.pas',
+    'Cache burde indeholde den læste fil');
+  Assert.Contains(LJsonText, 'Windows-1252',
+    'Cache burde registrere den detekterede encoding');
 end;
 
 initialization

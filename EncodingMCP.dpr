@@ -1,4 +1,4 @@
-program EncodingMCP;
+﻿program EncodingMCP;
 
 {$APPTYPE CONSOLE}
 
@@ -61,7 +61,7 @@ begin
       LRegistry := TToolRegistry.Create;
       try
         RegisterTools(LRegistry, LCacheManager);
-        LServer := TMcpServer.Create(LRegistry);
+        LServer := TMcpServer.Create(LRegistry, LCacheManager);
         try
           LServer.Run;
         finally
