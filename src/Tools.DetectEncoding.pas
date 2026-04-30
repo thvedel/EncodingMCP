@@ -1,4 +1,4 @@
-unit Tools.DetectEncoding;
+﻿unit Tools.DetectEncoding;
 
 /// <summary>
 ///   MCP-tool: detect_encoding. Returnerer detekteret encoding for en fil

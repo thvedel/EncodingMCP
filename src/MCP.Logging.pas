@@ -1,4 +1,4 @@
-unit MCP.Logging;
+﻿unit MCP.Logging;
 
 /// <summary>
 ///   Stderr-baseret logging. Må aldrig skrive til stdout, da stdout er reserveret

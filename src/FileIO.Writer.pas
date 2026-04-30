@@ -1,4 +1,4 @@
-unit FileIO.Writer;
+﻿unit FileIO.Writer;
 
 /// <summary>
 ///   Encoding-aware filskrivning. Bevarer eller tilsidesætter encoding ved

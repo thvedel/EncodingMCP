@@ -1,4 +1,4 @@
-unit Tools.ReadFile;
+﻿unit Tools.ReadFile;
 
 /// <summary>
 ///   MCP-tool: read_text_file. Læser en tekstfil med automatisk encoding-detektion

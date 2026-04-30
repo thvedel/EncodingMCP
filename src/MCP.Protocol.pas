@@ -1,4 +1,4 @@
-unit MCP.Protocol;
+﻿unit MCP.Protocol;
 
 /// <summary>
 ///   JSON-RPC 2.0 datatyper og hjælpefunktioner til MCP-kommunikation.

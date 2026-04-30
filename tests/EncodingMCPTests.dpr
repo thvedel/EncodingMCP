@@ -1,4 +1,4 @@
-program EncodingMCPTests;
+﻿program EncodingMCPTests;
 
 {$APPTYPE CONSOLE}
 

@@ -1,4 +1,4 @@
-unit Encoding.Detector;
+﻿unit Encoding.Detector;
 
 /// <summary>
 ///   Encoding-detektion via BOM, streng UTF-8-validering og 8-bit codepage-heuristik.

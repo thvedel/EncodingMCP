@@ -1,4 +1,4 @@
-unit FileIO.Reader;
+﻿unit FileIO.Reader;
 
 /// <summary>
 ///   Encoding-aware filsslæsning. Detekterer encoding (eller bruger cache),

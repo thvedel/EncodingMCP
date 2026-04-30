@@ -1,4 +1,4 @@
-# Build-output
+﻿# Build-output
 build/
 
 # Delphi midlertidige filer
@@ -22,6 +22,9 @@ __recovery/
 
 # Per-user TestInsight runtime-konfig (peger på lokal RAD-instans)
 tests/TestInsightSettings.ini
+
+# Sidecar-cache (genereres af serveren selv, per-machine state)
+.windsurf-encoding.json
 
 # Windows
 Thumbs.db

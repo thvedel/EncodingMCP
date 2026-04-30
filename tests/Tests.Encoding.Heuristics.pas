@@ -1,4 +1,4 @@
-unit Tests.Encoding.Heuristics;
+﻿unit Tests.Encoding.Heuristics;
 
 interface
 

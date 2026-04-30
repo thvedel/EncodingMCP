@@ -1,4 +1,4 @@
-unit MCP.Tools;
+﻿unit MCP.Tools;
 
 /// <summary>
 ///   Tool-interface og registreringsmekanisme for MCP-værktøjer.

@@ -1,4 +1,4 @@
-unit Tests.Encoding.Detector;
+﻿unit Tests.Encoding.Detector;
 
 interface
 

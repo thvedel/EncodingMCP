@@ -1,4 +1,4 @@
-unit Encoding.Workspace;
+﻿unit Encoding.Workspace;
 
 /// <summary>
 ///   Workspace-rod detektion. Finder den nærmeste mappe der indeholder en marker

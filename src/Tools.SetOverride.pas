@@ -1,4 +1,4 @@
-unit Tools.SetOverride;
+﻿unit Tools.SetOverride;
 
 /// <summary>
 ///   MCP-tool: set_encoding_override. Sætter en manuel encoding-override for

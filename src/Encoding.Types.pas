@@ -1,4 +1,4 @@
-unit Encoding.Types;
+﻿unit Encoding.Types;
 
 /// <summary>
 ///   Fælles datatyper for encoding-detektion og -konvertering.

@@ -1,4 +1,4 @@
-unit Encoding.Heuristics;
+﻿unit Encoding.Heuristics;
 
 /// <summary>
 ///   Heuristisk scoring af 8-bit codepage-kandidater baseret på byte-frekvens

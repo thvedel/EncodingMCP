@@ -1,4 +1,4 @@
-unit Encoding.CacheManager;
+﻿unit Encoding.CacheManager;
 
 /// <summary>
 ///   Manager der vedligeholder TEncodingCache-instanser per workspace-rod.

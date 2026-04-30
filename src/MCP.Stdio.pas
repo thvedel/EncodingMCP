@@ -1,4 +1,4 @@
-unit MCP.Stdio;
+﻿unit MCP.Stdio;
 
 /// <summary>
 ///   Linje-baseret UTF-8 stdio-transport til MCP. Læser/skriver direkte via

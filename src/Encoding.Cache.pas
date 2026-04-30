@@ -1,4 +1,4 @@
-unit Encoding.Cache;
+﻿unit Encoding.Cache;
 
 /// <summary>
 ///   Persistent sidecar-cache der husker detekteret/manuelt sat encoding per fil.

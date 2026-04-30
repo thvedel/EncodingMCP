@@ -1,4 +1,4 @@
-unit Tools.WriteFile;
+﻿unit Tools.WriteFile;
 
 /// <summary>
 ///   MCP-tool: write_text_file. Skriver UTF-8 indhold til en tekstfil i den
