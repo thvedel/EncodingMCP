@@ -1,7 +1,7 @@
 ﻿# EncodingMCP
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Delphi](https://img.shields.io/badge/Delphi-12%2B-red.svg)](https://www.embarcadero.com/products/delphi)
+[![Delphi](https://img.shields.io/badge/Delphi-13%2B-red.svg)](https://www.embarcadero.com/products/delphi)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x64-blue.svg)]()
 
 Native Delphi MCP-server der løser problemet med at Windsurf/Codeium forventer at
@@ -17,7 +17,7 @@ workspace-roden.
 ## Hurtigstart
 
 ```cmd
-git clone <repo-url>
+git clone https://github.com/thvedel/EncodingMCP.git
 cd EncodingMCP
 build.bat
 ```
@@ -39,7 +39,7 @@ på den (se [Konfiguration i Windsurf](#konfiguration-i-windsurf)).
 
 ## Krav
 
-- Delphi 12 (Studio 37) eller nyere — bruger kun RTL (`System.JSON`,
+- Delphi 13 (Studio 37) eller nyere — bruger kun RTL (`System.JSON`,
   `System.SysUtils`, `System.Classes`, `System.IOUtils`, `System.Generics.*`)
 - Windows
 - Ingen runtime-afhængigheder — det er én selvstændig `.exe`
