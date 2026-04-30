@@ -3,6 +3,7 @@ build/
 
 # Delphi midlertidige filer
 *.dcu
+*.res
 *.local
 *.identcache
 *.tvsconfig
