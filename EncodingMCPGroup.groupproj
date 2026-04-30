@@ -1,0 +1,48 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{8D0E808F-55D4-4235-B1AB-16BF182D7B84}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="EncodingMCP.dproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="tests\EncodingMCPTests.dproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="EncodingMCP">
+        <MSBuild Projects="EncodingMCP.dproj"/>
+    </Target>
+    <Target Name="EncodingMCP:Clean">
+        <MSBuild Projects="EncodingMCP.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="EncodingMCP:Make">
+        <MSBuild Projects="EncodingMCP.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="EncodingMCPTests">
+        <MSBuild Projects="tests\EncodingMCPTests.dproj"/>
+    </Target>
+    <Target Name="EncodingMCPTests:Clean">
+        <MSBuild Projects="tests\EncodingMCPTests.dproj" Targets="Clean"/>
+    </Target>
+    <Target Name="EncodingMCPTests:Make">
+        <MSBuild Projects="tests\EncodingMCPTests.dproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="EncodingMCP;EncodingMCPTests"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="EncodingMCP:Clean;EncodingMCPTests:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="EncodingMCP:Make;EncodingMCPTests:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>

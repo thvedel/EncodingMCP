@@ -1,0 +1,31 @@
+# Build-output
+build/
+
+# Delphi midlertidige filer
+*.dcu
+*.local
+*.identcache
+*.tvsconfig
+*.skincfg
+*.~*
+*.~bak
+*.bak
+__history/
+__recovery/
+
+# IDE-genererede sidefiler (men .dproj og .groupproj committes)
+*.dproj.local
+*.groupproj.local
+*.delphilsp.json
+*.rsm
+*.code-workspace
+
+# Per-user TestInsight runtime-konfig (peger på lokal RAD-instans)
+tests/TestInsightSettings.ini
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Test-mapper
+test-temp/
