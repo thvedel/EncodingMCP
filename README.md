@@ -1,7 +1,7 @@
 ﻿# EncodingMCP
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Delphi](https://img.shields.io/badge/Delphi-13%2B-red.svg)](https://www.embarcadero.com/products/delphi)
+[![Delphi](https://img.shields.io/badge/Delphi-12.3%2B-red.svg)](https://www.embarcadero.com/products/delphi)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x64-blue.svg)]()
 
 Native Delphi MCP-server der løser problemet med at Windsurf/Codeium forventer at
@@ -39,15 +39,22 @@ på den (se [Konfiguration i Windsurf](#konfiguration-i-windsurf)).
 
 ## Krav
 
-- Delphi 13 (Studio 37) eller nyere — bruger kun RTL (`System.JSON`,
-  `System.SysUtils`, `System.Classes`, `System.IOUtils`, `System.Generics.*`)
+- Delphi 12.3 (Studio 23.0) eller Delphi 13.1 (Studio 37.0) — bruger kun RTL
+  (`System.JSON`, `System.SysUtils`, `System.Classes`, `System.IOUtils`,
+  `System.Generics.*`)
 - Windows
 - Ingen runtime-afhængigheder — det er én selvstændig `.exe`
 
-`build.bat` antager at Delphi-installationens `rsvars.bat` ligger i sin
-standardplacering (`C:\Program Files (x86)\Embarcadero\Studio\37.0\bin\rsvars.bat`).
-Justér variablen `RSVARS` i `build.bat` hvis din installation ligger andetsteds
-eller du bruger en anden Delphi-version.
+`build.bat` søger automatisk efter Delphi i standardplaceringerne og vælger den
+nyeste tilgængelige version:
+
+| Delphi-version | Studio-nummer | Sti til `rsvars.bat` |
+|---|---|---|
+| 13.1 | 37.0 | `C:\Program Files (x86)\Embarcadero\Studio\37.0\bin\rsvars.bat` |
+| 12.3 | 23.0 | `C:\Program Files (x86)\Embarcadero\Studio\23.0\bin\rsvars.bat` |
+
+Hvis din installation ligger andetsteds, kan du sætte miljøvariablen `RSVARS`
+inden du kører `build.bat`.
 
 ## Build
 
