@@ -38,9 +38,15 @@ type
     FExtensionOverrides: TDictionary<string, TEncodingId>; // '.pas' → Windows1252
     FDirty: Boolean;
     procedure LoadFromDisk;
+    procedure MergeFromDisk;
+    procedure ParseFilesInto(AFilesObj: TJSONObject;
+      ATarget: TDictionary<string, TCacheEntry>);
+    procedure ParseOverridesInto(AOverridesObj: TJSONObject;
+      ATarget: TDictionary<string, TEncodingId>);
     procedure ParseFiles(AFilesObj: TJSONObject);
     procedure ParseOverrides(AOverridesObj: TJSONObject);
     function BuildJson: TJSONObject;
+    procedure AtomicWriteText(const APath, AText: string);
     function NormalizeRelative(const ARelativePath: string): string;
     function NormalizeExtension(const APattern: string): string;
   public
@@ -70,8 +76,10 @@ type
 implementation
 
 uses
+  System.Classes,
   System.IOUtils,
   System.DateUtils,
+  Winapi.Windows,
   MCP.Logging;
 
 { TEncodingCache }
@@ -123,21 +131,22 @@ begin
   Result := LPat;
 end;
 
-procedure TEncodingCache.LoadFromDisk;
+function ReadCacheJson(const APath: string; out AObj: TJSONObject): Boolean;
 var
   LJsonText: string;
   LRoot: TJSONValue;
-  LObj, LFilesObj, LOverridesObj: TJSONObject;
   LVersionValue: TJSONValue;
 begin
-  if not TFile.Exists(FCachePath) then
+  Result := False;
+  AObj := nil;
+  if not TFile.Exists(APath) then
     Exit;
   try
-    LJsonText := TFile.ReadAllText(FCachePath, TEncoding.UTF8);
+    LJsonText := TFile.ReadAllText(APath, TEncoding.UTF8);
   except
     on E: Exception do
     begin
-      TLog.Warning('Could not read cache file %s: %s', [FCachePath, E.Message]);
+      TLog.Warning('Could not read cache file %s: %s', [APath, E.Message]);
       Exit;
     end;
   end;
@@ -145,16 +154,25 @@ begin
   if not (LRoot is TJSONObject) then
   begin
     LRoot.Free;
-    TLog.Warning('Cache file %s is not a JSON object', [FCachePath]);
+    TLog.Warning('Cache file %s is not a JSON object', [APath]);
     Exit;
   end;
+  AObj := TJSONObject(LRoot);
+  LVersionValue := AObj.GetValue('version');
+  if (LVersionValue is TJSONNumber) and
+     (TJSONNumber(LVersionValue).AsInt <> CACHE_VERSION) then
+    TLog.Warning('Cache file version mismatch (got %d, expected %d) — proceeding anyway',
+      [TJSONNumber(LVersionValue).AsInt, CACHE_VERSION]);
+  Result := True;
+end;
+
+procedure TEncodingCache.LoadFromDisk;
+var
+  LObj, LFilesObj, LOverridesObj: TJSONObject;
+begin
+  if not ReadCacheJson(FCachePath, LObj) then
+    Exit;
   try
-    LObj := TJSONObject(LRoot);
-    LVersionValue := LObj.GetValue('version');
-    if (LVersionValue is TJSONNumber) and
-       (TJSONNumber(LVersionValue).AsInt <> CACHE_VERSION) then
-      TLog.Warning('Cache file version mismatch (got %d, expected %d) — proceeding anyway',
-        [TJSONNumber(LVersionValue).AsInt, CACHE_VERSION]);
     LFilesObj := LObj.GetValue('files') as TJSONObject;
     if LFilesObj <> nil then
       ParseFiles(LFilesObj);
@@ -162,11 +180,58 @@ begin
     if LOverridesObj <> nil then
       ParseOverrides(LOverridesObj);
   finally
-    LRoot.Free;
+    LObj.Free;
   end;
 end;
 
-procedure TEncodingCache.ParseFiles(AFilesObj: TJSONObject);
+procedure TEncodingCache.MergeFromDisk;
+var
+  LObj, LFilesObj, LOverridesObj: TJSONObject;
+  LDiskFiles: TDictionary<string, TCacheEntry>;
+  LDiskOverrides: TDictionary<string, TEncodingId>;
+  LPath: string;
+  LEntry: TCacheEntry;
+  LExt: string;
+  LEncId: TEncodingId;
+begin
+  if not ReadCacheJson(FCachePath, LObj) then
+    Exit;
+  LDiskFiles := TDictionary<string, TCacheEntry>.Create;
+  LDiskOverrides := TDictionary<string, TEncodingId>.Create;
+  try
+    LFilesObj := LObj.GetValue('files') as TJSONObject;
+    if LFilesObj <> nil then
+      ParseFilesInto(LFilesObj, LDiskFiles);
+    LOverridesObj := LObj.GetValue('overrides') as TJSONObject;
+    if LOverridesObj <> nil then
+      ParseOverridesInto(LOverridesObj, LDiskOverrides);
+    // Merge: disk-entries der ikke findes in-memory tilføjes.
+    // In-memory entries der er nyere (eller dirty) bevares.
+    for LPath in LDiskFiles.Keys do
+    begin
+      if not FFiles.ContainsKey(LPath) then
+      begin
+        LEntry := LDiskFiles[LPath];
+        FFiles.Add(LPath, LEntry);
+      end;
+    end;
+    for LExt in LDiskOverrides.Keys do
+    begin
+      if not FExtensionOverrides.ContainsKey(LExt) then
+      begin
+        LEncId := LDiskOverrides[LExt];
+        FExtensionOverrides.Add(LExt, LEncId);
+      end;
+    end;
+  finally
+    LDiskOverrides.Free;
+    LDiskFiles.Free;
+    LObj.Free;
+  end;
+end;
+
+procedure TEncodingCache.ParseFilesInto(AFilesObj: TJSONObject;
+  ATarget: TDictionary<string, TCacheEntry>);
 var
   LPair: TJSONPair;
   LEntryObj: TJSONObject;
@@ -198,11 +263,12 @@ begin
         LEntry.DetectedAt := 0;
       end;
     end;
-    FFiles.AddOrSetValue(NormalizeRelative(LPair.JsonString.Value), LEntry);
+    ATarget.AddOrSetValue(NormalizeRelative(LPair.JsonString.Value), LEntry);
   end;
 end;
 
-procedure TEncodingCache.ParseOverrides(AOverridesObj: TJSONObject);
+procedure TEncodingCache.ParseOverridesInto(AOverridesObj: TJSONObject;
+  ATarget: TDictionary<string, TEncodingId>);
 var
   LPair: TJSONPair;
   LEncoding: TEncodingId;
@@ -214,9 +280,19 @@ begin
     LEncoding := EncodingIdFromName(TJSONString(LPair.JsonValue).Value);
     if LEncoding = TEncodingId.Unknown then
       Continue;
-    FExtensionOverrides.AddOrSetValue(
+    ATarget.AddOrSetValue(
       NormalizeExtension(LPair.JsonString.Value), LEncoding);
   end;
+end;
+
+procedure TEncodingCache.ParseFiles(AFilesObj: TJSONObject);
+begin
+  ParseFilesInto(AFilesObj, FFiles);
+end;
+
+procedure TEncodingCache.ParseOverrides(AOverridesObj: TJSONObject);
+begin
+  ParseOverridesInto(AOverridesObj, FExtensionOverrides);
 end;
 
 function TEncodingCache.BuildJson: TJSONObject;
@@ -254,6 +330,35 @@ begin
   end;
 end;
 
+procedure TEncodingCache.AtomicWriteText(const APath, AText: string);
+var
+  LTempPath: string;
+  LBytes: TBytes;
+  LStream: TFileStream;
+begin
+  LTempPath := APath + '.tmp';
+  // Skriv UTF-8 indhold til temp-fil
+  LBytes := TEncoding.UTF8.GetBytes(AText);
+  LStream := TFileStream.Create(LTempPath, fmCreate);
+  try
+    if Length(LBytes) > 0 then
+      LStream.WriteBuffer(LBytes[0], Length(LBytes));
+  finally
+    LStream.Free;
+  end;
+  // Atomisk rename (overskriver eksisterende)
+  if not MoveFileEx(PChar(LTempPath), PChar(APath),
+       MOVEFILE_REPLACE_EXISTING or MOVEFILE_WRITE_THROUGH) then
+  begin
+    // Fallback: slet + rename hvis MoveFileEx fejler (fx pga. antivirus)
+    TLog.Warning('MoveFileEx failed for cache, trying fallback: %s',
+      [SysErrorMessage(GetLastError)]);
+    if TFile.Exists(APath) then
+      TFile.Delete(APath);
+    TFile.Move(LTempPath, APath);
+  end;
+end;
+
 procedure TEncodingCache.Save;
 var
   LJson: TJSONObject;
@@ -261,6 +366,9 @@ var
 begin
   if not FDirty then
     Exit;
+  // Re-read og merge data fra disk inden vi skriver,
+  // så vi ikke overskriver entries fra andre instanser
+  MergeFromDisk;
   LJson := BuildJson;
   try
     LText := LJson.Format(2);
@@ -268,7 +376,7 @@ begin
     LJson.Free;
   end;
   try
-    TFile.WriteAllText(FCachePath, LText, TEncoding.UTF8);
+    AtomicWriteText(FCachePath, LText);
     FDirty := False;
   except
     on E: Exception do

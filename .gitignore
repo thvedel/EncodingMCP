@@ -26,6 +26,10 @@ tests/TestInsightSettings.ini
 
 # Sidecar-cache (genereres af serveren selv, per-machine state)
 .windsurf-encoding.json
+.windsurf-encoding.json.tmp
+
+# Midlertidige filer fra atomisk skrivning
+*.tmp
 
 # Windows
 Thumbs.db

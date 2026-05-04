@@ -39,6 +39,10 @@ type
     procedure WriteToNewFile_DefaultsToUtf8WithBom;
     [Test]
     procedure FlushAll_WritesSidecarCache;
+    [Test]
+    procedure AtomicWrite_NoTempFileLeft;
+    [Test]
+    procedure CacheMerge_PreservesEntriesFromDisk;
   end;
 
 implementation
@@ -209,6 +213,52 @@ begin
     'Cache burde indeholde den læste fil');
   Assert.Contains(LJsonText, 'Windows-1252',
     'Cache burde registrere den detekterede encoding');
+end;
+
+procedure TRoundtripTests.AtomicWrite_NoTempFileLeft;
+var
+  LPath, LTempPath: string;
+  LOptions: TWriteOptions;
+begin
+  LPath := MakeTempPath('Atomic.txt');
+  LTempPath := LPath + '.tmp';
+  LOptions := MakeDefaultWriteOptions;
+  WriteTextFile(LPath, 'Hello', FCacheManager, LOptions);
+  Assert.IsTrue(TFile.Exists(LPath), 'Filen burde eksistere efter skrivning');
+  Assert.IsFalse(TFile.Exists(LTempPath),
+    'Temp-filen burde ikke eksistere efter atomisk rename');
+end;
+
+procedure TRoundtripTests.CacheMerge_PreservesEntriesFromDisk;
+var
+  LPath1, LPath2, LSidecar, LJsonText: string;
+  LCacheManager2: TCacheManager;
+begin
+  // Instans 1 laeser fil A og flusher
+  LPath1 := MakeTempPath('FileA.pas');
+  WriteBytes(LPath1, TBytes.Create($48, $65, $6A, $20, $E6, $F8, $E5));
+  ReadTextFile(LPath1, FCacheManager);
+  FCacheManager.FlushAll;
+
+  // Instans 2 (simuleret) laeser fil B og flusher
+  LCacheManager2 := TCacheManager.Create;
+  try
+    LPath2 := MakeTempPath('FileB.pas');
+    WriteBytes(LPath2, TBytes.Create($48, $65, $6A, $20, $E6, $F8, $E5));
+    ReadTextFile(LPath2, LCacheManager2);
+    LCacheManager2.FlushAll;
+  finally
+    LCacheManager2.Free;
+  end;
+
+  // Verificer at sidecar indeholder begge filer (merge fra disk)
+  LSidecar := TPath.Combine(FTempDir, '.windsurf-encoding.json');
+  Assert.IsTrue(TFile.Exists(LSidecar), 'Sidecar burde eksistere');
+  LJsonText := TFile.ReadAllText(LSidecar);
+  Assert.Contains(LJsonText, 'FileA.pas',
+    'Cache burde indeholde FileA.pas fra foerste instans (merget fra disk)');
+  Assert.Contains(LJsonText, 'FileB.pas',
+    'Cache burde indeholde FileB.pas fra anden instans');
 end;
 
 initialization

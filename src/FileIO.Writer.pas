@@ -56,6 +56,7 @@ implementation
 uses
   System.IOUtils,
   System.Math,
+  Winapi.Windows,
   Encoding.Detector,
   MCP.Logging;
 
@@ -172,14 +173,26 @@ end;
 
 procedure WriteBytesToFile(const APath: string; const ABytes: TBytes);
 var
+  LTempPath: string;
   LStream: TFileStream;
 begin
-  LStream := TFileStream.Create(APath, fmCreate);
+  LTempPath := APath + '.tmp';
+  LStream := TFileStream.Create(LTempPath, fmCreate);
   try
     if Length(ABytes) > 0 then
       LStream.WriteBuffer(ABytes[0], Length(ABytes));
   finally
     LStream.Free;
+  end;
+  // Atomisk rename: temp-fil -> endelig fil
+  if not MoveFileEx(PChar(LTempPath), PChar(APath),
+       MOVEFILE_REPLACE_EXISTING or MOVEFILE_WRITE_THROUGH) then
+  begin
+    TLog.Warning('MoveFileEx failed, trying fallback: %s',
+      [SysErrorMessage(GetLastError)]);
+    if TFile.Exists(APath) then
+      TFile.Delete(APath);
+    TFile.Move(LTempPath, APath);
   end;
 end;
 

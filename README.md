@@ -221,8 +221,11 @@ Bytes er identiske — encoding er bevaret.
   scoring er minimal.
 - **Store filer**: Heuristik kører kun på første 64 KB. Det er hurtigt og
   tilstrækkeligt for typiske kildefiler.
-- **Concurrent skrivning**: Cachen er ikke fil-låst. Flere instanser af serveren
-  mod samme workspace kan trædepå hinanden.
+- **Concurrent skrivning**: Fil-skrivning (både brugerfiler og sidecar-cache)
+  sker atomisk via temp-fil + rename, så en crash aldrig efterlader en halvskrevet
+  fil. Sidecar-cachen merger med disk-indhold inden skrivning, så entries fra
+  andre instanser bevares. Der er dog intet fil-låsning-lag — ved ægte samtidige
+  skrivninger til *samme* fil fra to instanser vinder den sidste.
 
 ## Tests
 
@@ -275,6 +278,8 @@ Tests dækker:
 - Line-ending detektion (CRLF/LF/Mixed)
 - End-to-end round-trip (læs Windows-1252 → skriv tilbage, byte-sammenlign)
 - BOM-skrivning og default UTF-8 BOM for nye filer
+- Atomisk filskrivning (ingen .tmp-fil efterladt)
+- Cache-merge (to instanser bevarer hinandens entries)
 
 ## Logging
 
