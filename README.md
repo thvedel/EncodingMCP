@@ -4,10 +4,14 @@
 [![Delphi](https://img.shields.io/badge/Delphi-12.3%2B-red.svg)](https://www.embarcadero.com/products/delphi)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x64-blue.svg)]()
 
-Native Delphi MCP-server der løser problemet med at Windsurf/Codeium forventer at
-tekstfiler er UTF-8 encoded. Mange Delphi-projekter har kildefiler i Windows-1252
-eller andre 8-bit encodings, og uden korrekt håndtering bliver danske tegn (`æ`,
-`ø`, `å`) og andre non-ASCII tegn ødelagt når en LLM ændrer i filerne.
+MCP-server ([Model Context Protocol](https://modelcontextprotocol.io/)) der løser
+problemet med at AI-kodningsværktøjer (Windsurf, Claude Code, Claude Desktop,
+Cursor m.fl.) forventer at tekstfiler er UTF-8 encoded.
+
+Mangt et projekt — særligt Delphi, C++Builder og legacy Windows-applikationer —
+har kildefiler i Windows-1252, ISO-8859-1 eller andre 8-bit encodings. Uden
+korrekt håndtering bliver specialtegn (`æ`, `ø`, `å`, `€`, smart quotes m.fl.)
+ødelagt når en LLM læser eller skriver i filerne.
 
 Serveren detekterer automatisk encoding (BOM, UTF-8-validering eller heuristisk
 codepage-scoring) og oversætter mellem fil-encoding og UTF-8 ved læsning og
@@ -16,14 +20,26 @@ workspace-roden.
 
 ## Hurtigstart
 
+### Alternativ A: Download færdig EXE (ingen Delphi nødvendig)
+
+1. Gå til [Releases](https://github.com/thvedel/EncodingMCP/releases/latest)
+2. Download `EncodingMCP.exe`
+3. Placer den et sted du kan finde den (f.eks. `C:\Tools\EncodingMCP.exe`)
+4. Konfigurer din MCP-klient (se [Installation](#installation))
+
+> **Bemærk (Windows):** Efter download kan du blive nødt til at højreklikke filen
+> → Egenskaber → "Fjern blokering", da Windows markerer filer downloadet fra
+> internettet. Alternativt: `Unblock-File -Path <sti>` i PowerShell.
+
+### Alternativ B: Byg fra kilde
+
 ```cmd
 git clone https://github.com/thvedel/EncodingMCP.git
 cd EncodingMCP
 build.bat
 ```
 
-Resultatet er en selvstændig `.exe` under `build\Win64\Release\`. Peg Windsurf
-på den (se [Konfiguration i Windsurf](#konfiguration-i-windsurf)).
+Resultatet er en selvstændig `.exe` under `build\Win64\Release\`.
 
 ## Indhold
 
@@ -69,17 +85,25 @@ eller `Debug`).
 
 Du kan også åbne `EncodingMCP.dproj` direkte i RAD Studio og bygge derfra.
 
-## Konfiguration i Windsurf
+## Installation
 
-Byg projektet (`build.bat`) og noter den absolutte sti til den genererede
-`EncodingMCP.exe`. Tilføj så følgende til `~/.codeium/windsurf/mcp_config.json`
-(Windows: `%USERPROFILE%\.codeium\windsurf\mcp_config.json`):
+Serveren kommunikerer via **stdio** (stdin/stdout JSON-RPC). Enhver MCP-klient
+der understøtter stdio-transport kan bruge den. Nedenfor er eksempler for de
+mest udbredte klienter.
+
+I alle eksempler skal `<STI>` erstattes med den absolutte sti til
+`EncodingMCP.exe` (enten downloadet fra Releases eller bygget lokalt).
+Backslashes i JSON skal escapes som `\\`.
+
+### Windsurf / Codeium
+
+Rediger `%USERPROFILE%\.codeium\windsurf\mcp_config.json`:
 
 ```json
 {
   "mcpServers": {
     "encoding-bridge": {
-      "command": "<ABSOLUT_STI_TIL_EncodingMCP.exe>",
+      "command": "<STI>",
       "args": [],
       "disabled": false
     }
@@ -87,12 +111,55 @@ Byg projektet (`build.bat`) og noter den absolutte sti til den genererede
 }
 ```
 
-Udskift `<ABSOLUT_STI_TIL_EncodingMCP.exe>` med stien til din build (f.eks.
-`C:\\projects\\EncodingMCP\\build\\Win64\\Release\\EncodingMCP.exe`).
-Backslashes skal escapes som `\\` i JSON.
+Genstart Windsurf efter ændringen.
 
-Genstart Windsurf efter ændringen. Du kan sætte miljøvariablen
-`ENCODING_MCP_LOG_LEVEL=debug` for mere logging på `stderr`.
+### Claude Code
+
+```bash
+claude mcp add encoding-bridge "<STI>"
+```
+
+### Claude Desktop
+
+Rediger config-filen:
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "encoding-bridge": {
+      "command": "<STI>",
+      "args": []
+    }
+  }
+}
+```
+
+### Cursor
+
+Rediger `.cursor/mcp.json` i dit projekt (eller den globale config):
+
+```json
+{
+  "mcpServers": {
+    "encoding-bridge": {
+      "command": "<STI>",
+      "args": []
+    }
+  }
+}
+```
+
+### Andre MCP-klienter
+
+Enhver klient der understøtter MCP stdio-transport kan starte EXE'en direkte.
+Protokol: JSON-RPC 2.0 over stdin/stdout. Server-navn: `encoding-bridge`.
+
+### Debug-logging
+
+Sæt miljøvariablen `ENCODING_MCP_LOG_LEVEL=debug` for detaljeret logging på
+`stderr`. Understøttede niveauer: `debug`, `info` (default), `warning`, `error`.
 
 ## Tilgængelige tools
 
@@ -214,8 +281,8 @@ Bytes er identiske — encoding er bevaret.
 
 ## Begrænsninger og fremtidige forbedringer
 
-- **Windsurf-integration**: Vi kan ikke garantere at Windsurf rent faktisk kalder
-  `write_text_file` i stedet for sin native filskrivning. Det afhænger af
+- **Klient-integration**: Vi kan ikke garantere at AI-værktøjet rent faktisk
+  kalder `write_text_file` i stedet for sin native filskrivning. Det afhænger af
   hvordan tool-beskrivelserne får LLM'en til at vælge værktøjet. Test empirisk.
 - **MacRoman**: Detekteres ikke aktivt endnu — koden har struktur til det men
   scoring er minimal.
@@ -280,15 +347,6 @@ Tests dækker:
 - BOM-skrivning og default UTF-8 BOM for nye filer
 - Atomisk filskrivning (ingen .tmp-fil efterladt)
 - Cache-merge (to instanser bevarer hinandens entries)
-
-## Logging
-
-Server logger til `stderr` (aldrig stdout — det reserveret til JSON-RPC).
-Niveauer: `debug`, `info` (default), `warning`, `error`. Sæt via miljøvariabel:
-
-```cmd
-set ENCODING_MCP_LOG_LEVEL=debug
-```
 
 ## Bidrag
 
