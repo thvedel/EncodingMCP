@@ -1,8 +1,8 @@
 ﻿unit Tools.WriteFile;
 
 /// <summary>
-///   MCP-tool: write_text_file. Skriver UTF-8 indhold til en tekstfil i den
-///   korrekte encoding (cachet, override eller detekteret fra eksisterende fil).
+///   MCP tool: write_text_file. Writes UTF-8 content to a text file in the
+///   correct encoding (cached, overridden, or detected from existing file).
 /// </summary>
 
 interface

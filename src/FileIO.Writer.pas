@@ -1,8 +1,8 @@
 ﻿unit FileIO.Writer;
 
 /// <summary>
-///   Encoding-aware filskrivning. Bevarer eller tilsidesætter encoding ved
-///   skrivning, og kan rapportere tegn der ikke kan repræsenteres.
+///   Encoding-aware file writing. Preserves or overrides encoding on write,
+///   and can report characters that cannot be represented.
 /// </summary>
 
 interface
@@ -16,10 +16,10 @@ uses
 
 type
   TWriteOptions = record
-    EncodingOverride: TEncodingId;       // Unknown = bevar eksisterende
-    LineEndingOverride: TLineEnding;     // Unknown = bevar eksisterende eller default CRLF
-    HasBomOverride: Integer;             // -1 = ikke sat, 0 = uden BOM, 1 = med BOM
-    CreateIfMissing: Boolean;            // True = opret hvis filen ikke findes
+    EncodingOverride: TEncodingId;       // Unknown = preserve existing
+    LineEndingOverride: TLineEnding;     // Unknown = preserve existing or default CRLF
+    HasBomOverride: Integer;             // -1 = not set, 0 = without BOM, 1 = with BOM
+    CreateIfMissing: Boolean;            // True = create if file does not exist
   end;
 
   TWriteResult = record
@@ -27,7 +27,7 @@ type
     HasBom: Boolean;
     LineEnding: TLineEnding;
     BytesWritten: Int64;
-    UnsupportedCharCount: Integer; // Antal tegn der ikke kunne repræsenteres
+    UnsupportedCharCount: Integer; // Number of characters that could not be represented
     Created: Boolean;
   end;
 
@@ -44,9 +44,9 @@ type
 function MakeDefaultWriteOptions: TWriteOptions;
 
 /// <summary>
-///   Skriver UTF-8 indhold til en fil med korrekt encoding-konvertering.
-///   Hvis filen findes og der ikke er givet override, bruges cachet encoding.
-///   Hvis filen ikke findes og CreateIfMissing er True, defaultes til UTF-8 m. BOM.
+///   Writes UTF-8 content to a file with correct encoding conversion.
+///   If the file exists and no override is given, the cached encoding is used.
+///   If the file does not exist and CreateIfMissing is True, defaults to UTF-8 with BOM.
 /// </summary>
 function WriteTextFile(const APath: string; const AContent: string;
   ACacheManager: TCacheManager; const AOptions: TWriteOptions): TWriteResult;
@@ -134,7 +134,7 @@ var
   I, LMaxSample: Integer;
   LBuilder: TStringBuilder;
 begin
-  // Encode → decode → sammenlign per tegn
+  // Encode → decode → compare per character
   LRoundtrip := AEncoding.GetBytes(AContent);
   LBack := AEncoding.GetString(LRoundtrip);
   if LBack = AContent then
@@ -146,7 +146,7 @@ begin
   LBuilder := TStringBuilder.Create;
   try
     LMaxSample := 10;
-    // Bemærk: roundtrip kan give forskellig længde hvis tegn erstattes med '?'
+    // Note: roundtrip may produce different length if characters are replaced with '?'
     if Length(LBack) = Length(AContent) then
     begin
       for I := 1 to Length(AContent) do
@@ -161,7 +161,7 @@ begin
     end
     else
     begin
-      // Fallback: tæl heuristisk
+      // Fallback: count heuristically
       Result := Abs(Length(AContent) - Length(LBack)) + 1;
       LBuilder.Append('(unknown)');
     end;
@@ -184,7 +184,7 @@ begin
   finally
     LStream.Free;
   end;
-  // Atomisk rename: temp-fil -> endelig fil
+  // Atomic rename: temp file -> final file
   if not MoveFileEx(PChar(LTempPath), PChar(APath),
        MOVEFILE_REPLACE_EXISTING or MOVEFILE_WRITE_THROUGH) then
   begin
@@ -210,7 +210,7 @@ begin
   LResolved := False;
   AEntry := Default(TCacheEntry);
 
-  // Find startpunkt med faldende prioritet
+  // Find starting point with descending priority
   if AOptions.EncodingOverride <> TEncodingId.Unknown then
   begin
     AEntry.EncodingId := AOptions.EncodingOverride;
@@ -240,14 +240,14 @@ begin
   end;
   if not LResolved then
   begin
-    // Ny fil uden hints → UTF-8 med BOM som default
+    // New file without hints → UTF-8 with BOM as default
     AEntry.EncodingId := TEncodingId.Utf8;
     AEntry.HasBom := True;
     AEntry.LineEnding := TLineEnding.CrLf;
     AEntry.DetectedAt := Now;
   end;
 
-  // Anvend overrides oven på resolved-værdien
+  // Apply overrides on top of the resolved value
   if AOptions.LineEndingOverride <> TLineEnding.Unknown then
     AEntry.LineEnding := AOptions.LineEndingOverride;
   if AOptions.HasBomOverride = 0 then
@@ -273,17 +273,17 @@ begin
   if (not LExisting) and (not AOptions.CreateIfMissing) then
     raise Exception.CreateFmt('File does not exist and CreateIfMissing is false: %s', [APath]);
 
-  // Sørg for at directory eksisterer
+  // Ensure directory exists
   if not LExisting then
     TDirectory.CreateDirectory(TPath.GetDirectoryName(APath));
 
   ResolveTargetEncoding(APath, ACacheManager, AOptions, LEntry, LRelative, LCache);
   Result.Created := not LExisting;
 
-  // Normaliser line-endings i indholdet
+  // Normalize line endings in the content
   LContent := NormalizeLineEndings(AContent, LEntry.LineEnding);
 
-  // Konverter til target encoding
+  // Convert to target encoding
   case LEntry.EncodingId of
     TEncodingId.Ascii,
     TEncodingId.Utf8:
@@ -296,7 +296,7 @@ begin
     LEncoding := TEncoding.GetEncoding(EncodingIdCodePage(LEntry.EncodingId));
   end;
   try
-    // Tjek for tab af tegn (kun ved ikke-Unicode targets)
+    // Check for character loss (only for non-Unicode targets)
     LUnsupportedCount := 0;
     LSample := '';
     if not (LEntry.EncodingId in [TEncodingId.Utf8, TEncodingId.Ascii,
@@ -329,7 +329,7 @@ begin
   Result.BytesWritten := Length(LFinal);
   Result.UnsupportedCharCount := LUnsupportedCount;
 
-  // Opdatér cache (bevar manual flag hvis det allerede var sat)
+  // Update cache (preserve manual flag if already set)
   LEntry.DetectedAt := Now;
   LCache.Put(LRelative, LEntry);
 end;

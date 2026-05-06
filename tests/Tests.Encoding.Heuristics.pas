@@ -42,7 +42,7 @@ end;
 
 procedure THeuristicsTests.IsValidUtf8_TwoByteSequence;
 begin
-  // æ = U+00E6 = C3 A6 i UTF-8
+  // æ = U+00E6 = C3 A6 in UTF-8
   Assert.IsTrue(IsValidUtf8(TBytes.Create($C3, $A6)));
 end;
 
@@ -54,25 +54,25 @@ end;
 
 procedure THeuristicsTests.IsValidUtf8_Invalid_OverlongTwoByte;
 begin
-  // C0 80 ville være overlong NUL - ulovligt
+  // C0 80 would be overlong NUL - illegal
   Assert.IsFalse(IsValidUtf8(TBytes.Create($C0, $80)));
 end;
 
 procedure THeuristicsTests.IsValidUtf8_Invalid_LoneStartByte;
 begin
-  // C3 alene uden continuation byte
+  // C3 alone without continuation byte
   Assert.IsFalse(IsValidUtf8(TBytes.Create($C3)));
 end;
 
 procedure THeuristicsTests.IsValidUtf8_Invalid_Surrogate;
 begin
-  // ED A0 80 = U+D800 (surrogate, ulovligt i UTF-8)
+  // ED A0 80 = U+D800 (surrogate, illegal in UTF-8)
   Assert.IsFalse(IsValidUtf8(TBytes.Create($ED, $A0, $80)));
 end;
 
 procedure THeuristicsTests.IsValidUtf8_Invalid_Windows1252Bytes;
 begin
-  // æ i Windows-1252 (E6) er ikke gyldig UTF-8 start byte
+  // æ in Windows-1252 (E6) is not a valid UTF-8 start byte
   Assert.IsFalse(IsValidUtf8(TBytes.Create($48, $E6)));
 end;
 

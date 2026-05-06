@@ -1,8 +1,8 @@
 ﻿unit MCP.Logging;
 
 /// <summary>
-///   Stderr-baseret logging. Må aldrig skrive til stdout, da stdout er reserveret
-///   til MCP-protokolbeskeder.
+///   Stderr-based logging. Must never write to stdout, as stdout is reserved
+///   for MCP protocol messages.
 /// </summary>
 
 interface
@@ -13,7 +13,7 @@ type
   TLogLevel = (Debug, Info, Warning, Error);
 
   /// <summary>
-  ///   Statisk logger der skriver til stderr med tidsstempel og niveau.
+  ///   Static logger that writes to stderr with timestamp and level.
   /// </summary>
   TLog = class
   strict private
@@ -21,7 +21,7 @@ type
     class procedure WriteLine(ALevel: TLogLevel; const AMessage: string); static;
   public
     class constructor Create;
-    /// <summary>Sætter minimums-loglevel. Beskeder under dette niveau ignoreres.</summary>
+    /// <summary>Sets the minimum log level. Messages below this level are ignored.</summary>
     class procedure SetMinLevel(ALevel: TLogLevel); static;
     class procedure Debug(const AMessage: string); overload; static;
     class procedure Debug(const AFormat: string; const AArgs: array of const); overload; static;

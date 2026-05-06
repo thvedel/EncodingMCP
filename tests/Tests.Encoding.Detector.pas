@@ -119,7 +119,7 @@ var
   LBytes: TBytes;
   LResult: TDetectedEncoding;
 begin
-  // 'Hej ' + æøå (E6 F8 E5) i Windows-1252
+  // 'Hej ' + æøå (E6 F8 E5) in Windows-1252
   LBytes := TBytes.Create($48, $65, $6A, $20, $E6, $F8, $E5);
   LResult := DetectEncoding(LBytes);
   Assert.AreEqual(TEncodingId.Windows1252, LResult.Id);
@@ -131,7 +131,7 @@ var
   LBytes: TBytes;
   LResult: TDetectedEncoding;
 begin
-  // 'Pris: ' + Euro (0x80 i Windows-1252) + ' 100'
+  // 'Pris: ' + Euro (0x80 in Windows-1252) + ' 100'
   LBytes := TBytes.Create($50, $72, $69, $73, $3A, $20, $80, $20, $31, $30, $30);
   LResult := DetectEncoding(LBytes);
   Assert.AreEqual(TEncodingId.Windows1252, LResult.Id);
@@ -145,11 +145,11 @@ var
   LBytes: TBytes;
   LResult: TDetectedEncoding;
 begin
-  // Kun 0xA0..0xFF tegn - ingen C1-zone bytes
-  // 'café' = 63 61 66 E9 i Latin-1
+  // Only 0xA0..0xFF characters - no C1 zone bytes
+  // 'café' = 63 61 66 E9 in Latin-1
   LBytes := TBytes.Create($63, $61, $66, $E9);
   LResult := DetectEncoding(LBytes);
-  // Med danske/europæiske tegn under 0xA0 forventer vi enten Win1252 eller ISO-8859-x
+  // With Danish/European characters below 0xA0 we expect either Win1252 or ISO-8859-x
   Assert.IsTrue(
     (LResult.Id = TEncodingId.Windows1252) or
     (LResult.Id = TEncodingId.Iso88591) or

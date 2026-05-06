@@ -1,8 +1,8 @@
 ﻿unit Tools.DetectEncoding;
 
 /// <summary>
-///   MCP-tool: detect_encoding. Returnerer detekteret encoding for en fil
-///   uden at læse hele indholdet ind i resultatet.
+///   MCP tool: detect_encoding. Returns the detected encoding for a file
+///   without reading the full content into the result.
 /// </summary>
 
 interface

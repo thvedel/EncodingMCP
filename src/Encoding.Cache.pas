@@ -1,8 +1,8 @@
 ﻿unit Encoding.Cache;
 
 /// <summary>
-///   Persistent sidecar-cache der husker detekteret/manuelt sat encoding per fil.
-///   Cachen lever som en JSON-fil i workspace-roden (.windsurf-encoding.json).
+///   Persistent sidecar cache that remembers detected/manually set encoding per file.
+///   The cache lives as a JSON file in the workspace root (.windsurf-encoding.json).
 /// </summary>
 
 interface
@@ -18,24 +18,24 @@ const
   CACHE_VERSION = 1;
 
 type
-  /// <summary>Et entry i fil-cachen.</summary>
+  /// <summary>A single entry in the file cache.</summary>
   TCacheEntry = record
     EncodingId: TEncodingId;
     HasBom: Boolean;
     LineEnding: TLineEnding;
-    Manual: Boolean; // Sat via set_encoding_override
+    Manual: Boolean; // Set via set_encoding_override
     DetectedAt: TDateTime;
   end;
 
   /// <summary>
-  ///   In-memory + persistent cache for én workspace-rod.
+  ///   In-memory + persistent cache for a single workspace root.
   /// </summary>
   TEncodingCache = class
   strict private
     FWorkspaceRoot: string;
     FCachePath: string;
     FFiles: TDictionary<string, TCacheEntry>;
-    FExtensionOverrides: TDictionary<string, TEncodingId>; // '.pas' → Windows1252
+    FExtensionOverrides: TDictionary<string, TEncodingId>; // '.pas' → Windows-1252
     FDirty: Boolean;
     procedure LoadFromDisk;
     procedure MergeFromDisk;
@@ -54,21 +54,21 @@ type
     destructor Destroy; override;
     property WorkspaceRoot: string read FWorkspaceRoot;
     property CachePath: string read FCachePath;
-    /// <summary>Skriver ændringer til disk hvis der har været ændringer.</summary>
+    /// <summary>Writes changes to disk if there have been modifications.</summary>
     procedure Save;
-    /// <summary>Henter en cache-entry for en relativ sti. Returnerer False hvis ikke findes.</summary>
+    /// <summary>Retrieves a cache entry for a relative path. Returns False if not found.</summary>
     function TryGet(const ARelativePath: string; out AEntry: TCacheEntry): Boolean;
-    /// <summary>Sætter eller opdaterer en entry og markerer cache som dirty.</summary>
+    /// <summary>Sets or updates an entry and marks the cache as dirty.</summary>
     procedure Put(const ARelativePath: string; const AEntry: TCacheEntry);
-    /// <summary>Sletter en entry. Bruges fx hvis filen er slettet.</summary>
+    /// <summary>Removes an entry. Used e.g. when a file has been deleted.</summary>
     procedure Remove(const ARelativePath: string);
     /// <summary>
-    ///   Tjekker for en extension-override (fx '*.pas' → Windows-1252).
-    ///   Returnerer True hvis fundet.
+    ///   Checks for an extension override (e.g. '*.pas' → Windows-1252).
+    ///   Returns True if found.
     /// </summary>
     function TryGetExtensionOverride(const ARelativePath: string;
       out AEncodingId: TEncodingId): Boolean;
-    /// <summary>Sætter en extension-override (pattern fx '*.pas' eller '.pas').</summary>
+    /// <summary>Sets an extension override (pattern e.g. '*.pas' or '.pas').</summary>
     procedure SetExtensionOverride(const APattern: string; AEncodingId: TEncodingId);
     function ExtensionOverrideCount: Integer;
   end;
@@ -121,7 +121,7 @@ var
   LPat: string;
 begin
   LPat := APattern.ToLower.Trim;
-  // Acceptér '*.pas', '**/*.pas', '.pas', 'pas'
+  // Accept '*.pas', '**/*.pas', '.pas', 'pas'
   if LPat.StartsWith('**/') then
     LPat := LPat.Substring(3);
   if LPat.StartsWith('*') then
@@ -205,8 +205,8 @@ begin
     LOverridesObj := LObj.GetValue('overrides') as TJSONObject;
     if LOverridesObj <> nil then
       ParseOverridesInto(LOverridesObj, LDiskOverrides);
-    // Merge: disk-entries der ikke findes in-memory tilføjes.
-    // In-memory entries der er nyere (eller dirty) bevares.
+    // Merge: disk entries not present in-memory are added.
+    // In-memory entries that are newer (or dirty) are preserved.
     for LPath in LDiskFiles.Keys do
     begin
       if not FFiles.ContainsKey(LPath) then
@@ -337,7 +337,7 @@ var
   LStream: TFileStream;
 begin
   LTempPath := APath + '.tmp';
-  // Skriv UTF-8 indhold til temp-fil
+  // Write UTF-8 content to temp file
   LBytes := TEncoding.UTF8.GetBytes(AText);
   LStream := TFileStream.Create(LTempPath, fmCreate);
   try
@@ -346,11 +346,11 @@ begin
   finally
     LStream.Free;
   end;
-  // Atomisk rename (overskriver eksisterende)
+  // Atomic rename (overwrites existing)
   if not MoveFileEx(PChar(LTempPath), PChar(APath),
        MOVEFILE_REPLACE_EXISTING or MOVEFILE_WRITE_THROUGH) then
   begin
-    // Fallback: slet + rename hvis MoveFileEx fejler (fx pga. antivirus)
+    // Fallback: delete + rename if MoveFileEx fails (e.g. due to antivirus)
     TLog.Warning('MoveFileEx failed for cache, trying fallback: %s',
       [SysErrorMessage(GetLastError)]);
     if TFile.Exists(APath) then
@@ -366,8 +366,8 @@ var
 begin
   if not FDirty then
     Exit;
-  // Re-read og merge data fra disk inden vi skriver,
-  // så vi ikke overskriver entries fra andre instanser
+  // Re-read and merge data from disk before writing,
+  // so we don't overwrite entries from other instances
   MergeFromDisk;
   LJson := BuildJson;
   try

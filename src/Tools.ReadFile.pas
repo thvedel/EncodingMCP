@@ -1,8 +1,8 @@
 ﻿unit Tools.ReadFile;
 
 /// <summary>
-///   MCP-tool: read_text_file. Læser en tekstfil med automatisk encoding-detektion
-///   og returnerer indholdet som UTF-8 sammen med encoding-metadata.
+///   MCP tool: read_text_file. Reads a text file with automatic encoding detection
+///   and returns the content as UTF-8 along with encoding metadata.
 /// </summary>
 
 interface

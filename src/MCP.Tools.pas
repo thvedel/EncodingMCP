@@ -1,7 +1,7 @@
 ﻿unit MCP.Tools;
 
 /// <summary>
-///   Tool-interface og registreringsmekanisme for MCP-værktøjer.
+///   Tool interface and registration mechanism for MCP tools.
 /// </summary>
 
 interface
@@ -13,29 +13,29 @@ uses
 
 type
   /// <summary>
-  ///   Et MCP-værktøj. Hvert værktøj eksponerer et navn, beskrivelse, JSON Schema
-  ///   for parametre og en eksekveringsmetode.
+  ///   An MCP tool. Each tool exposes a name, description, JSON Schema
+  ///   for parameters, and an execution method.
   /// </summary>
   IMcpTool = interface
     ['{B7F6F4A8-2C19-4F4A-8D19-9E5B7C2C9A11}']
     function GetName: string;
     function GetDescription: string;
     /// <summary>
-    ///   Returnerer et JSON Schema object der beskriver tool-parametrene.
-    ///   Kalderen overtager ejerskab.
+    ///   Returns a JSON Schema object describing the tool parameters.
+    ///   The caller takes ownership.
     /// </summary>
     function BuildInputSchema: TJSONObject;
     /// <summary>
-    ///   Udfører værktøjet. Returnerer et MCP-content-objekt med
-    ///   "content"-array og evt. "isError". Kalderen overtager ejerskab.
+    ///   Executes the tool. Returns an MCP content object with
+    ///   "content" array and optional "isError". The caller takes ownership.
     /// </summary>
-    /// <param name="AArguments">JSON-argumenter (kan være nil for parameterløse tools).</param>
-    /// <exception cref="Exception">Ved interne fejl. Dispatcher omformer til MCP error-respons.</exception>
+    /// <param name="AArguments">JSON arguments (may be nil for parameterless tools).</param>
+    /// <exception cref="Exception">On internal errors. Dispatcher converts to MCP error response.</exception>
     function Execute(AArguments: TJSONObject): TJSONObject;
   end;
 
   /// <summary>
-  ///   Registry for IMcpTool-instanser, slået op via navn.
+  ///   Registry for IMcpTool instances, looked up by name.
   /// </summary>
   TToolRegistry = class
   strict private
@@ -46,19 +46,19 @@ type
     procedure Register(const ATool: IMcpTool);
     function TryGet(const AName: string; out ATool: IMcpTool): Boolean;
     function Names: TArray<string>;
-    /// <summary>Bygger MCP "tools/list" JSON-array. Kalderen overtager ejerskab.</summary>
+    /// <summary>Builds the MCP "tools/list" JSON array. The caller takes ownership.</summary>
     function BuildListJson: TJSONArray;
   end;
 
 /// <summary>
-///   Bygger et standard MCP tool-result med en enkelt tekstblok.
-///   Kalderen overtager ejerskab.
+///   Builds a standard MCP tool result with a single text block.
+///   The caller takes ownership.
 /// </summary>
 function BuildTextResult(const AText: string; AIsError: Boolean = False): TJSONObject;
 
 /// <summary>
-///   Bygger et MCP tool-result hvor teksten er en serialiseret JSON-værdi
-///   (typisk pretty-printed JSON). Kalderen overtager ejerskab.
+///   Builds an MCP tool result where the text is a serialized JSON value
+///   (typically pretty-printed JSON). The caller takes ownership.
 /// </summary>
 function BuildJsonTextResult(AJson: TJSONValue; AIsError: Boolean = False): TJSONObject;
 

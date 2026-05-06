@@ -3,14 +3,14 @@
 {$APPTYPE CONSOLE}
 
 {
-  Hybrid testrunner:
+  Hybrid test runner:
 
-  - I IDE'en (med TestInsight-pluginnen aktiv): definér TESTINSIGHT i
-    Project Options -> Conditional defines, og tilføj TestInsight-mappen
-    til projektets search path. Resultater sendes til TestInsight-panelet.
+  - In the IDE (with the TestInsight plugin active): define TESTINSIGHT in
+    Project Options -> Conditional defines, and add the TestInsight folder
+    to the project search path. Results are sent to the TestInsight panel.
 
-  - Fra build.bat / kommandolinje: TESTINSIGHT er ikke defineret, og runneren
-    kører som en almindelig DUnitX-konsol-runner.
+  - From build.bat / command line: TESTINSIGHT is not defined, and the runner
+    operates as a standard DUnitX console runner.
 }
 
 uses

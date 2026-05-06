@@ -1,8 +1,8 @@
 ﻿unit Tools.SetOverride;
 
 /// <summary>
-///   MCP-tool: set_encoding_override. Sætter en manuel encoding-override for
-///   en specifik fil eller for et extension-pattern (fx *.pas → Windows-1252).
+///   MCP tool: set_encoding_override. Sets a manual encoding override for
+///   a specific file or for an extension pattern (e.g. *.pas → Windows-1252).
 /// </summary>
 
 interface
@@ -141,7 +141,7 @@ begin
   end
   else
   begin
-    // Pattern - vælg cache for nuværende arbejdsmappe
+    // Pattern - select cache for current working directory
     FCacheManager.Resolve(GetCurrentDir, LCache, LRelative);
     LCache.SetExtensionOverride(LPattern, LEncoding);
     LApplied := 'pattern:' + LPattern + ' (workspace ' + LCache.WorkspaceRoot + ')';

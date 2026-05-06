@@ -1,8 +1,8 @@
 ﻿unit FileIO.Reader;
 
 /// <summary>
-///   Encoding-aware filsslæsning. Detekterer encoding (eller bruger cache),
-///   konverterer til UTF-8 string, og returnerer metadata.
+///   Encoding-aware file reading. Detects encoding (or uses cache),
+///   converts to UTF-8 string, and returns metadata.
 /// </summary>
 
 interface
@@ -28,13 +28,13 @@ type
   end;
 
 /// <summary>
-///   Læser en fil, detekterer (eller henter cachet) encoding, og returnerer
-///   indholdet som UTF-8 streng. Cachen opdateres med detekteret encoding.
+///   Reads a file, detects (or retrieves cached) encoding, and returns
+///   the content as a UTF-8 string. The cache is updated with detected encoding.
 /// </summary>
-/// <param name="APath">Absolut sti til filen.</param>
-/// <param name="ACacheManager">Cache-manager. Må ikke være nil.</param>
-/// <param name="AHead">Hvis &gt; 0, returnér kun de første N linjer.</param>
-/// <param name="ATail">Hvis &gt; 0, returnér kun de sidste N linjer.</param>
+/// <param name="APath">Absolute path to the file.</param>
+/// <param name="ACacheManager">Cache manager. Must not be nil.</param>
+/// <param name="AHead">If &gt; 0, return only the first N lines.</param>
+/// <param name="ATail">If &gt; 0, return only the last N lines.</param>
 function ReadTextFile(const APath: string; ACacheManager: TCacheManager;
   AHead: Integer = 0; ATail: Integer = 0): TReadResult;
 
@@ -115,14 +115,14 @@ var
   LStart, LEnd, I: Integer;
   LBuilder: TStringBuilder;
 begin
-  // Bevar oprindelige line-endings ved at splitte manuelt
+  // Preserve original line endings by splitting manually
   if AContent = '' then
   begin
     ATotalLines := 0;
     AReturnedLines := 0;
     Exit('');
   end;
-  // Tæl linjer ved at splitte på LF (CR håndteres som del af linjeindholdet)
+  // Count lines by splitting on LF (CR is handled as part of line content)
   LLines := AContent.Split([#10]);
   ATotalLines := Length(LLines);
   if (AHead <= 0) and (ATail <= 0) then
@@ -182,12 +182,12 @@ begin
   ACacheManager.Resolve(APath, LCache, LRelative);
   LHasCached := LCache.TryGet(LRelative, LEntry);
 
-  // Bestem encoding-prioritet:
-  //   1) BOM (altid 100% sikker)
-  //   2) Cachet manuel override (sat af bruger)
-  //   3) Extension-override fra cache (fx *.pas → Windows-1252)
-  //   4) Cachet auto-detekteret entry hvis filen er uændret (vi gendetekterer for sikkerhed)
-  //   5) Frisk detektion
+  // Determine encoding priority:
+  //   1) BOM (always 100% certain)
+  //   2) Cached manual override (set by user)
+  //   3) Extension override from cache (e.g. *.pas → Windows-1252)
+  //   4) Cached auto-detected entry if file is unchanged (we re-detect for safety)
+  //   5) Fresh detection
   LBom := DetectBom(LBytes);
   if LBom.Detected then
   begin
@@ -225,7 +225,7 @@ begin
   Result.Content := ApplyHeadTail(Result.Content, AHead, ATail,
     Result.TotalLines, Result.ReturnedLines);
 
-  // Opdatér cache (medmindre der er en manuel entry vi ikke bør overskrive)
+  // Update cache (unless there is a manual entry we should not overwrite)
   if not (LHasCached and LEntry.Manual) then
   begin
     LEntry := Default(TCacheEntry);

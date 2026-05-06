@@ -1,8 +1,8 @@
 ﻿unit Encoding.Workspace;
 
 /// <summary>
-///   Workspace-rod detektion. Finder den nærmeste mappe der indeholder en marker
-///   (.git, .windsurf, *.dproj, *.groupproj, .svn) ved at gå op fra en given fil.
+///   Workspace root detection. Finds the nearest directory containing a marker
+///   (.git, .windsurf, *.dproj, *.groupproj, .svn) by traversing up from a given file.
 /// </summary>
 
 interface
@@ -11,14 +11,14 @@ uses
   System.SysUtils;
 
 /// <summary>
-///   Finder workspace-rod for den givne sti. Hvis ingen marker findes,
-///   returneres mappen for stien.
+///   Finds the workspace root for the given path. If no marker is found,
+///   the directory of the path is returned.
 /// </summary>
 function FindWorkspaceRoot(const APath: string): string;
 
 /// <summary>
-///   Returnerer en relativ sti fra workspace-rod til target-fil. Bruger '/' som
-///   separator for portabilitet i sidecar-cachen.
+///   Returns a relative path from the workspace root to the target file. Uses '/'
+///   as separator for portability in the sidecar cache.
 /// </summary>
 function MakeRelativePath(const AWorkspaceRoot, AAbsolutePath: string): string;
 
@@ -41,7 +41,7 @@ begin
     Exit(True);
   if TDirectory.Exists(TPath.Combine(ADir, '.hg')) then
     Exit(True);
-  // Delphi-projekt markører
+  // Delphi project markers
   LFiles := TDirectory.GetFiles(ADir, '*.dproj');
   if Length(LFiles) > 0 then
     Exit(True);
@@ -69,14 +69,14 @@ begin
       if HasMarker(LDir) then
         Exit(LDir);
     except
-      // Adgangsfejl på protected mapper - fortsæt opad
+      // Access error on protected directories - continue upward
     end;
     LParent := TPath.GetDirectoryName(LDir);
     if (LParent = '') or (LParent = LDir) then
       Break;
     LDir := LParent;
   end;
-  // Ingen marker fundet - brug filens mappe
+  // No marker found - use the file's directory
   Result := TPath.GetDirectoryName(APath);
 end;
 

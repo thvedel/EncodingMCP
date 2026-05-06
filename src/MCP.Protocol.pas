@@ -1,8 +1,8 @@
 ﻿unit MCP.Protocol;
 
 /// <summary>
-///   JSON-RPC 2.0 datatyper og hjælpefunktioner til MCP-kommunikation.
-///   Bygger på System.JSON (RTL).
+///   JSON-RPC 2.0 data types and helper functions for MCP communication.
+///   Built on System.JSON (RTL).
 /// </summary>
 
 interface
@@ -13,7 +13,7 @@ uses
 
 type
   /// <summary>
-  ///   JSON-RPC 2.0 fejl-koder.
+  ///   JSON-RPC 2.0 error codes.
   /// </summary>
   TJsonRpcErrorCode = (
     ParseError = -32700,
@@ -24,8 +24,8 @@ type
   );
 
   /// <summary>
-  ///   En indkommende JSON-RPC request eller notification. Notifications har
-  ///   ingen Id og forventer ikke svar.
+  ///   An incoming JSON-RPC request or notification. Notifications have
+  ///   no Id and do not expect a response.
   /// </summary>
   TJsonRpcRequest = class
   strict private
@@ -55,24 +55,24 @@ type
   end;
 
 /// <summary>
-///   Parser en JSON-RPC request fra en streng. Kaster EJsonRpcError ved invalide
-///   beskeder. Returnerer en ejet TJsonRpcRequest.
+///   Parses a JSON-RPC request from a string. Raises EJsonRpcError on invalid
+///   messages. Returns an owned TJsonRpcRequest.
 /// </summary>
 function ParseJsonRpcRequest(const AJson: string): TJsonRpcRequest;
 
 /// <summary>
-///   Bygger et JSON-RPC succes-svar som JSON-streng. AResult forbruges (ejes af resultatet).
+///   Builds a JSON-RPC success response as a JSON string. AResult is consumed (owned by result).
 /// </summary>
 function BuildJsonRpcResult(AId: TJSONValue; AResult: TJSONValue): string;
 
 /// <summary>
-///   Bygger et JSON-RPC fejl-svar som JSON-streng. AData forbruges hvis ikke nil.
+///   Builds a JSON-RPC error response as a JSON string. AData is consumed if not nil.
 /// </summary>
 function BuildJsonRpcError(AId: TJSONValue; ACode: Integer; const AMessage: string;
   AData: TJSONValue = nil): string;
 
 /// <summary>
-///   Returnerer en klonet TJSONValue af en eksisterende værdi, eller nil hvis input er nil.
+///   Returns a cloned TJSONValue of an existing value, or nil if input is nil.
 /// </summary>
 function CloneJsonValue(AValue: TJSONValue): TJSONValue;
 
@@ -159,7 +159,7 @@ begin
   LObj := TJSONObject.Create;
   try
     LObj.AddPair('jsonrpc', '2.0');
-    // AId klones så kalderen beholder ejerskab
+    // AId is cloned so the caller retains ownership
     if AId <> nil then
       LObj.AddPair('id', AId.Clone as TJSONValue)
     else
@@ -182,7 +182,7 @@ begin
   LObj := TJSONObject.Create;
   try
     LObj.AddPair('jsonrpc', '2.0');
-    // AId klones så kalderen beholder ejerskab
+    // AId is cloned so the caller retains ownership
     if AId <> nil then
       LObj.AddPair('id', AId.Clone as TJSONValue)
     else

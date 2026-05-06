@@ -1,7 +1,7 @@
 ﻿unit Encoding.Types;
 
 /// <summary>
-///   Fælles datatyper for encoding-detektion og -konvertering.
+///   Shared data types for encoding detection and conversion.
 /// </summary>
 
 interface
@@ -12,7 +12,7 @@ uses
   System.SysUtils;
 
 type
-  /// <summary>Identifikator for en understøttet encoding.</summary>
+  /// <summary>Identifier for a supported encoding.</summary>
   TEncodingId = (
     Unknown,
     Ascii,
@@ -29,7 +29,7 @@ type
 
   TLineEnding = (Unknown, Lf, CrLf, Cr, Mixed);
 
-  /// <summary>Resultat af encoding-detektion.</summary>
+  /// <summary>Result of encoding detection.</summary>
   TDetectedEncoding = record
     Id: TEncodingId;
     HasBom: Boolean;
@@ -38,8 +38,8 @@ type
     function Name: string;
     function CodePage: Integer;
     /// <summary>
-    ///   Returnerer en TEncoding-instans. Kald TEncoding.IsStandardEncoding
-    ///   før Free, da standard-encodings (UTF-8, Unicode) ikke må frigives.
+    ///   Returns a TEncoding instance. Call TEncoding.IsStandardEncoding
+    ///   before Free, as standard encodings (UTF-8, Unicode) must not be freed.
     /// </summary>
     function CreateEncoding: TEncoding;
   end;

@@ -1,8 +1,8 @@
 ﻿unit Encoding.CacheManager;
 
 /// <summary>
-///   Manager der vedligeholder TEncodingCache-instanser per workspace-rod.
-///   Caches loades lazy ved første brug og gemmes ved Flush eller Free.
+///   Manager that maintains TEncodingCache instances per workspace root.
+///   Caches are loaded lazily on first use and saved on Flush or Free.
 /// </summary>
 
 interface
@@ -22,11 +22,11 @@ type
     constructor Create;
     destructor Destroy; override;
     /// <summary>
-    ///   Returnerer cache + relativ sti for en absolut fil-sti.
+    ///   Returns cache + relative path for an absolute file path.
     /// </summary>
     procedure Resolve(const AAbsolutePath: string;
       out ACache: TEncodingCache; out ARelativePath: string);
-    /// <summary>Skriver alle dirty caches til disk.</summary>
+    /// <summary>Writes all dirty caches to disk.</summary>
     procedure FlushAll;
   end;
 

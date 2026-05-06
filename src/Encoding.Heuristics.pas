@@ -1,8 +1,8 @@
 ﻿unit Encoding.Heuristics;
 
 /// <summary>
-///   Heuristisk scoring af 8-bit codepage-kandidater baseret på byte-frekvens
-///   og sprog-karakteristika.
+///   Heuristic scoring of 8-bit codepage candidates based on byte frequency
+///   and language characteristics.
 /// </summary>
 
 interface
@@ -12,7 +12,7 @@ uses
   Encoding.Types;
 
 type
-  /// <summary>Score for én encoding-kandidat i [0..1].</summary>
+  /// <summary>Score for a single encoding candidate in [0..1].</summary>
   TCodepageScore = record
     EncodingId: TEncodingId;
     Score: Double;
@@ -21,38 +21,38 @@ type
   TCodepageScores = TArray<TCodepageScore>;
 
 /// <summary>
-///   Validerer en byte-sekvens som streng-konform UTF-8 (uden BOM).
-///   Afviser overlong-encodings, surrogates og out-of-range codepoints.
+///   Validates a byte sequence as strictly conformant UTF-8 (without BOM).
+///   Rejects overlong encodings, surrogates, and out-of-range codepoints.
 /// </summary>
-/// <returns>True hvis bytes er gyldig UTF-8.</returns>
+/// <returns>True if bytes constitute valid UTF-8.</returns>
 function IsValidUtf8(const ABytes: TBytes): Boolean;
 
 /// <summary>
-///   Returnerer True hvis byte-sekvensen kun indeholder ASCII (0x00..0x7F)
-///   og ikke er tom.
+///   Returns True if the byte sequence contains only ASCII (0x00..0x7F)
+///   and is not empty.
 /// </summary>
 function IsPureAscii(const ABytes: TBytes): Boolean;
 
 /// <summary>
-///   Tæller hvor mange bytes der er i C1-kontrolzonen (0x80..0x9F).
+///   Counts how many bytes fall in the C1 control zone (0x80..0x9F).
 /// </summary>
 function CountC1Bytes(const ABytes: TBytes): Integer;
 
 /// <summary>
-///   Tæller bytes der er gyldige printable Windows-1252 tegn i C1-zonen
-///   (€, ‚, ƒ, „, …, †, ‡, ˆ, ‰, Š, ‹, Œ, Ž, '"–—˜™š›œžŸ).
+///   Counts bytes that are valid printable Windows-1252 characters in the C1 zone
+///   (€, ‚, ƒ, „, …, †, ‡, ˆ, ‰, Š, ‹, Œ, Ž, ‘’–—˜™š›œžŸ).
 /// </summary>
 function CountValidWin1252C1(const ABytes: TBytes): Integer;
 
 /// <summary>
-///   Tæller bytes der er udefinerede i Windows-1252 (0x81, 0x8D, 0x8F, 0x90, 0x9D).
-///   Hvis disse forekommer er filen formentlig IKKE Windows-1252.
+///   Counts bytes that are undefined in Windows-1252 (0x81, 0x8D, 0x8F, 0x90, 0x9D).
+///   If present, the file is likely NOT Windows-1252.
 /// </summary>
 function CountUndefinedWin1252(const ABytes: TBytes): Integer;
 
 /// <summary>
-///   Scorer kandidat-encodings og returnerer dem sorteret efter sandsynlighed.
-///   Bruges når BOM mangler og UTF-8-validering fejler.
+///   Scores candidate encodings and returns them sorted by probability.
+///   Used when BOM is absent and UTF-8 validation fails.
 /// </summary>
 function ScoreCodepages(const ABytes: TBytes): TCodepageScores;
 
@@ -80,7 +80,7 @@ begin
     end;
     if (LByte and $E0) = $C0 then
     begin
-      // 2-byte sekvens
+      // 2-byte sequence
       LContinuation := 1;
       LCodepoint := LByte and $1F;
       LMin := $80;
@@ -199,21 +199,21 @@ begin
       Inc(LEuroAtA4);
   end;
 
-  // Windows-1252: stærk hvis vi ser printable C1-tegn, svækkes ved udefinerede
+  // Windows-1252: strong if we see printable C1 chars, weakened by undefined bytes
   if LValidC1 > 0 then
     LWin1252 := 0.85 + Min(0.10, LValidC1 / 100.0)
   else if LUndefinedW1252 > 0 then
-    LWin1252 := 0.30 // udefinerede bytes findes - dårligt match for Win1252
+    LWin1252 := 0.30 // undefined bytes present - poor match for Win1252
   else
-    LWin1252 := 0.65; // default fallback styrke når ingen C1 ses
+    LWin1252 := 0.65; // default fallback strength when no C1 seen
 
-  // ISO-8859-1: stærk hvis ingen C1-bytes og ingen Euro-mistanke
+  // ISO-8859-1: strong if no C1 bytes and no Euro suspicion
   if LValidC1 + LUndefinedW1252 = 0 then
     LIso88591 := 0.55
   else
-    LIso88591 := 0.10; // ISO-8859-1 har ingen tegn i 0x80..0x9F
+    LIso88591 := 0.10; // ISO-8859-1 has no characters in 0x80..0x9F
 
-  // ISO-8859-15: ligesom 8859-1 men foretrukken hvis 0xA4 forekommer (Euro-tegn)
+  // ISO-8859-15: like 8859-1 but preferred if 0xA4 occurs (Euro sign)
   if LValidC1 + LUndefinedW1252 = 0 then
   begin
     if LEuroAtA4 > 0 then
@@ -224,8 +224,8 @@ begin
   else
     LIso885915 := 0.10;
 
-  // Hvis filen er ren ASCII (ingen high bytes), er alle 8-bit codepages ligeværdige.
-  // Vi prioriterer Windows-1252 som default for Delphi/Windows-kontekst.
+  // If the file is pure ASCII (no high bytes), all 8-bit codepages are equivalent.
+  // We prioritize Windows-1252 as default for Delphi/Windows context.
   if LHighBytes = 0 then
   begin
     LWin1252 := 0.50;

@@ -1,8 +1,8 @@
 ﻿unit MCP.Stdio;
 
 /// <summary>
-///   Linje-baseret UTF-8 stdio-transport til MCP. Læser/skriver direkte via
-///   Windows-handles for at undgå Pascal text-mode konvertering og codepage-fælder.
+///   Line-based UTF-8 stdio transport for MCP. Reads/writes directly via
+///   Windows handles to avoid Pascal text-mode conversion and codepage pitfalls.
 /// </summary>
 
 interface
@@ -13,8 +13,8 @@ uses
 
 type
   /// <summary>
-  ///   Stdio transport der læser linje-delimiterede UTF-8 beskeder fra stdin
-  ///   og skriver UTF-8 linjer til stdout.
+  ///   Stdio transport that reads line-delimited UTF-8 messages from stdin
+  ///   and writes UTF-8 lines to stdout.
   /// </summary>
   TStdioTransport = class
   strict private
@@ -27,12 +27,12 @@ type
   public
     constructor Create;
     /// <summary>
-    ///   Læser én UTF-8 linje fra stdin. CR/LF og CRLF accepteres som linjeskift.
+    ///   Reads one UTF-8 line from stdin. CR/LF and CRLF are accepted as line breaks.
     /// </summary>
-    /// <returns>True hvis en linje blev læst, False ved EOF.</returns>
+    /// <returns>True if a line was read, False on EOF.</returns>
     function TryReadLine(out ALine: string): Boolean;
     /// <summary>
-    ///   Skriver en UTF-8 linje (med trailing LF) til stdout og flusher.
+    ///   Writes a UTF-8 line (with trailing LF) to stdout and flushes.
     /// </summary>
     procedure WriteLine(const ALine: string);
   end;
@@ -122,7 +122,7 @@ begin
       Exit(True);
     if FInputClosed then
     begin
-      // Hvis der er rester uden trailing LF, returnér dem som sidste linje
+      // If there are leftovers without trailing LF, return them as last line
       if Length(FInputBuffer) > 0 then
       begin
         ALine := TEncoding.UTF8.GetString(FInputBuffer);

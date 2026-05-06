@@ -1,7 +1,7 @@
 ﻿unit Encoding.Detector;
 
 /// <summary>
-///   Encoding-detektion via BOM, streng UTF-8-validering og 8-bit codepage-heuristik.
+///   Encoding detection via BOM, strict UTF-8 validation, and 8-bit codepage heuristics.
 /// </summary>
 
 interface
@@ -13,7 +13,7 @@ uses
 
 type
   /// <summary>
-  ///   BOM-detektionsresultat. Indeholder identificeret encoding og BOM-længde i bytes.
+  ///   BOM detection result. Contains identified encoding and BOM length in bytes.
   /// </summary>
   TBomInfo = record
     Detected: Boolean;
@@ -22,30 +22,30 @@ type
   end;
 
 /// <summary>
-///   Tjekker for BOM (UTF-8/16/32 LE+BE) i de første bytes af buffer.
-///   Returnerer Detected=False hvis ingen BOM findes.
+///   Checks for BOM (UTF-8/16/32 LE+BE) in the first bytes of the buffer.
+///   Returns Detected=False if no BOM is found.
 /// </summary>
 function DetectBom(const ABytes: TBytes): TBomInfo;
 
 /// <summary>
-///   Detekterer encoding for en byte-sekvens. Pipeline:
-///     1) BOM-check
-///     2) UTF-8 streng-validering
-///     3) UTF-16 uden BOM heuristik (mange null-bytes i lige/ulige positioner)
-///     4) 8-bit codepage scoring (heuristik)
+///   Detects encoding for a byte sequence. Pipeline:
+///     1) BOM check
+///     2) Strict UTF-8 validation
+///     3) UTF-16 without BOM heuristic (many null bytes in even/odd positions)
+///     4) 8-bit codepage scoring (heuristic)
 ///     5) Fallback Windows-1252
 /// </summary>
 function DetectEncoding(const ABytes: TBytes): TDetectedEncoding;
 
 /// <summary>
-///   Detekterer encoding for en fil. Læser maksimalt AMaxSampleBytes bytes til
-///   detektion (default 1 MB) — tilstrækkeligt for BOM og statistisk heuristik.
+///   Detects encoding for a file. Reads at most AMaxSampleBytes bytes for
+///   detection (default 1 MB) — sufficient for BOM and statistical heuristics.
 /// </summary>
 function DetectFileEncoding(const APath: string;
   AMaxSampleBytes: Integer = 1024 * 1024): TDetectedEncoding;
 
 /// <summary>
-///   Analyserer line-ending stil i bytes (CRLF/LF/CR/Mixed).
+///   Analyzes line-ending style in bytes (CRLF/LF/CR/Mixed).
 /// </summary>
 function DetectLineEnding(const ABytes: TBytes): TLineEnding;
 
@@ -136,7 +136,7 @@ begin
     Exit;
   LEvenRatio := LEvenNulls / LTotalPairs;
   LOddRatio := LOddNulls / LTotalPairs;
-  // ASCII-tekst i UTF-16 LE: høj-byten er 0 → odd-positioner har mange nulls
+  // ASCII text in UTF-16 LE: high byte is 0 → odd positions have many nulls
   if (LOddRatio > 0.30) and (LEvenRatio < 0.05) then
   begin
     AId := TEncodingId.Utf16Le;

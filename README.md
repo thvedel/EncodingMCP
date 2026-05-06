@@ -4,34 +4,34 @@
 [![Delphi](https://img.shields.io/badge/Delphi-12.3%2B-red.svg)](https://www.embarcadero.com/products/delphi)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x64-blue.svg)]()
 
-MCP-server ([Model Context Protocol](https://modelcontextprotocol.io/)) der løser
-problemet med at AI-kodningsværktøjer (Windsurf, Claude Code, Claude Desktop,
-Cursor m.fl.) forventer at tekstfiler er UTF-8 encoded.
+MCP server ([Model Context Protocol](https://modelcontextprotocol.io/)) that solves
+the problem of AI coding tools (Windsurf, Claude Code, Claude Desktop,
+Cursor, etc.) expecting text files to be UTF-8 encoded.
 
-Mangt et projekt — særligt Delphi, C++Builder og legacy Windows-applikationer —
-har kildefiler i Windows-1252, ISO-8859-1 eller andre 8-bit encodings. Uden
-korrekt håndtering bliver specialtegn (`æ`, `ø`, `å`, `€`, smart quotes m.fl.)
-ødelagt når en LLM læser eller skriver i filerne.
+Many projects — particularly Delphi, C++Builder, and legacy Windows applications —
+have source files in Windows-1252, ISO-8859-1, or other 8-bit encodings. Without
+proper handling, special characters (`æ`, `ø`, `å`, `€`, smart quotes, etc.)
+get corrupted when an LLM reads or writes these files.
 
-Serveren detekterer automatisk encoding (BOM, UTF-8-validering eller heuristisk
-codepage-scoring) og oversætter mellem fil-encoding og UTF-8 ved læsning og
-skrivning. Encoding huskes per fil i en `.windsurf-encoding.json` sidecar i
-workspace-roden.
+The server automatically detects encoding (BOM, UTF-8 validation, or heuristic
+codepage scoring) and translates between file encoding and UTF-8 on read and
+write. Encoding is remembered per file in a `.windsurf-encoding.json` sidecar in
+the workspace root.
 
-## Hurtigstart
+## Quick Start
 
-### Alternativ A: Download færdig EXE (ingen Delphi nødvendig)
+### Option A: Download prebuilt EXE (no Delphi required)
 
-1. Gå til [Releases](https://github.com/thvedel/EncodingMCP/releases/latest)
+1. Go to [Releases](https://github.com/thvedel/EncodingMCP/releases/latest)
 2. Download `EncodingMCP.exe`
-3. Placer den et sted du kan finde den (f.eks. `C:\Tools\EncodingMCP.exe`)
-4. Konfigurer din MCP-klient (se [Installation](#installation))
+3. Place it somewhere accessible (e.g. `C:\Tools\EncodingMCP.exe`)
+4. Configure your MCP client (see [Installation](#installation))
 
-> **Bemærk (Windows):** Efter download kan du blive nødt til at højreklikke filen
-> → Egenskaber → "Fjern blokering", da Windows markerer filer downloadet fra
-> internettet. Alternativt: `Unblock-File -Path <sti>` i PowerShell.
+> **Note (Windows):** After downloading you may need to right-click the file
+> → Properties → "Unblock", as Windows marks files downloaded from the
+> internet. Alternatively: `Unblock-File -Path <path>` in PowerShell.
 
-### Alternativ B: Byg fra kilde
+### Option B: Build from source
 
 ```cmd
 git clone https://github.com/thvedel/EncodingMCP.git
@@ -39,38 +39,38 @@ cd EncodingMCP
 build.bat
 ```
 
-Resultatet er en selvstændig `.exe` under `build\Win64\Release\`.
+The result is a standalone `.exe` under `build\Win64\Release\`.
 
-## Indhold
+## Contents
 
-| Sti | Beskrivelse |
+| Path | Description |
 |---|---|
-| `EncodingMCP.dpr` | Hovedprogram (console application) |
-| `src/MCP.*.pas` | Stdio-transport, JSON-RPC 2.0, server-dispatcher |
-| `src/Encoding.*.pas` | Detektion, heuristik, workspace, cache |
-| `src/FileIO.*.pas` | Encoding-aware fil-læsning/skrivning |
-| `src/Tools.*.pas` | MCP-værktøjer (read/write/detect/override) |
-| `tests/` | DUnitX testsuite |
-| `build.bat` | Build-script (hovedprogram + tests) |
+| `EncodingMCP.dpr` | Main program (console application) |
+| `src/MCP.*.pas` | Stdio transport, JSON-RPC 2.0, server dispatcher |
+| `src/Encoding.*.pas` | Detection, heuristics, workspace, cache |
+| `src/FileIO.*.pas` | Encoding-aware file reading/writing |
+| `src/Tools.*.pas` | MCP tools (read/write/detect/override) |
+| `tests/` | DUnitX test suite |
+| `build.bat` | Build script (main program + tests) |
 
-## Krav
+## Requirements
 
-- Delphi 12.3 (Studio 23.0) eller Delphi 13.1 (Studio 37.0) — bruger kun RTL
+- Delphi 12.3 (Studio 23.0) or Delphi 13.1 (Studio 37.0) — uses only RTL
   (`System.JSON`, `System.SysUtils`, `System.Classes`, `System.IOUtils`,
   `System.Generics.*`)
 - Windows
-- Ingen runtime-afhængigheder — det er én selvstændig `.exe`
+- No runtime dependencies — it is a single standalone `.exe`
 
-`build.bat` søger automatisk efter Delphi i standardplaceringerne og vælger den
-nyeste tilgængelige version:
+`build.bat` automatically searches for Delphi in standard locations and selects
+the newest available version:
 
-| Delphi-version | Studio-nummer | Sti til `rsvars.bat` |
+| Delphi version | Studio number | Path to `rsvars.bat` |
 |---|---|---|
 | 13.1 | 37.0 | `C:\Program Files (x86)\Embarcadero\Studio\37.0\bin\rsvars.bat` |
 | 12.3 | 23.0 | `C:\Program Files (x86)\Embarcadero\Studio\23.0\bin\rsvars.bat` |
 
-Hvis din installation ligger andetsteds, kan du sætte miljøvariablen `RSVARS`
-inden du kører `build.bat`.
+If your installation is elsewhere, set the `RSVARS` environment variable
+before running `build.bat`.
 
 ## Build
 
@@ -78,32 +78,32 @@ inden du kører `build.bat`.
 build.bat
 ```
 
-Byggeri sker via `msbuild` mod de to `.dproj`-filer. Output havner under
-`build\$(Platform)\$(Config)\` — som default `build\Win64\Release\`. Skift
-`PLATFORM`/`CONFIG` i `build.bat` for at bygge anderledes (f.eks. `Win32`
-eller `Debug`).
+Building is done via `msbuild` against the two `.dproj` files. Output goes to
+`build\$(Platform)\$(Config)\` — by default `build\Win64\Release\`. Change
+`PLATFORM`/`CONFIG` in `build.bat` to build differently (e.g. `Win32`
+or `Debug`).
 
-Du kan også åbne `EncodingMCP.dproj` direkte i RAD Studio og bygge derfra.
+You can also open `EncodingMCP.dproj` directly in RAD Studio and build from there.
 
 ## Installation
 
-Serveren kommunikerer via **stdio** (stdin/stdout JSON-RPC). Enhver MCP-klient
-der understøtter stdio-transport kan bruge den. Nedenfor er eksempler for de
-mest udbredte klienter.
+The server communicates via **stdio** (stdin/stdout JSON-RPC). Any MCP client
+that supports stdio transport can use it. Below are examples for the most
+popular clients.
 
-I alle eksempler skal `<STI>` erstattes med den absolutte sti til
-`EncodingMCP.exe` (enten downloadet fra Releases eller bygget lokalt).
-Backslashes i JSON skal escapes som `\\`.
+In all examples, replace `<PATH>` with the absolute path to
+`EncodingMCP.exe` (either downloaded from Releases or built locally).
+Backslashes in JSON must be escaped as `\\`.
 
 ### Windsurf / Codeium
 
-Rediger `%USERPROFILE%\.codeium\windsurf\mcp_config.json`:
+Edit `%USERPROFILE%\.codeium\windsurf\mcp_config.json`:
 
 ```json
 {
   "mcpServers": {
     "encoding-bridge": {
-      "command": "<STI>",
+      "command": "<PATH>",
       "args": [],
       "disabled": false
     }
@@ -111,17 +111,17 @@ Rediger `%USERPROFILE%\.codeium\windsurf\mcp_config.json`:
 }
 ```
 
-Genstart Windsurf efter ændringen.
+Restart Windsurf after the change.
 
 ### Claude Code
 
 ```bash
-claude mcp add encoding-bridge "<STI>"
+claude mcp add encoding-bridge "<PATH>"
 ```
 
 ### Claude Desktop
 
-Rediger config-filen:
+Edit the config file:
 - **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 - **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 
@@ -129,7 +129,7 @@ Rediger config-filen:
 {
   "mcpServers": {
     "encoding-bridge": {
-      "command": "<STI>",
+      "command": "<PATH>",
       "args": []
     }
   }
@@ -138,43 +138,43 @@ Rediger config-filen:
 
 ### Cursor
 
-Rediger `.cursor/mcp.json` i dit projekt (eller den globale config):
+Edit `.cursor/mcp.json` in your project (or the global config):
 
 ```json
 {
   "mcpServers": {
     "encoding-bridge": {
-      "command": "<STI>",
+      "command": "<PATH>",
       "args": []
     }
   }
 }
 ```
 
-### Andre MCP-klienter
+### Other MCP clients
 
-Enhver klient der understøtter MCP stdio-transport kan starte EXE'en direkte.
-Protokol: JSON-RPC 2.0 over stdin/stdout. Server-navn: `encoding-bridge`.
+Any client that supports MCP stdio transport can launch the EXE directly.
+Protocol: JSON-RPC 2.0 over stdin/stdout. Server name: `encoding-bridge`.
 
-### Debug-logging
+### Debug logging
 
-Sæt miljøvariablen `ENCODING_MCP_LOG_LEVEL=debug` for detaljeret logging på
-`stderr`. Understøttede niveauer: `debug`, `info` (default), `warning`, `error`.
+Set the environment variable `ENCODING_MCP_LOG_LEVEL=debug` for detailed logging
+on `stderr`. Supported levels: `debug`, `info` (default), `warning`, `error`.
 
-## Tilgængelige tools
+## Available tools
 
 ### `read_text_file`
 
-Læser en tekstfil med automatisk encoding-detektion og returnerer indholdet som
-UTF-8 sammen med metadata.
+Reads a text file with automatic encoding detection and returns the content as
+UTF-8 along with metadata.
 
-| Parameter | Type | Beskrivelse |
+| Parameter | Type | Description |
 |---|---|---|
-| `path` | string | Absolut sti til filen |
-| `head` | integer | Valgfri: kun første N linjer |
-| `tail` | integer | Valgfri: kun sidste N linjer |
+| `path` | string | Absolute path to the file |
+| `head` | integer | Optional: only first N lines |
+| `tail` | integer | Optional: only last N lines |
 
-Output (JSON i `content[0].text`):
+Output (JSON in `content[0].text`):
 
 ```json
 {
@@ -193,22 +193,22 @@ Output (JSON i `content[0].text`):
 
 ### `write_text_file`
 
-Skriver UTF-8 indhold til en fil i den korrekte encoding. Hvis filen findes,
-bevares dens originale encoding (med mindre der gives `encoding`-override).
-Nye filer defaulter til UTF-8 med BOM.
+Writes UTF-8 content to a file in the correct encoding. If the file exists,
+its original encoding is preserved (unless an `encoding` override is given).
+New files default to UTF-8 with BOM.
 
-| Parameter | Type | Beskrivelse |
+| Parameter | Type | Description |
 |---|---|---|
-| `path` | string | Absolut sti |
-| `content` | string | UTF-8 indhold |
-| `encoding` | string | Valgfri override (UTF-8, Windows-1252, ...) |
-| `lineEnding` | string | Valgfri (CRLF/LF/CR) |
-| `hasBom` | boolean | Valgfri |
+| `path` | string | Absolute path |
+| `content` | string | UTF-8 content |
+| `encoding` | string | Optional override (UTF-8, Windows-1252, ...) |
+| `lineEnding` | string | Optional (CRLF/LF/CR) |
+| `hasBom` | boolean | Optional |
 | `createIfMissing` | boolean | Default true |
 
 ### `detect_encoding`
 
-Returnerer detekteret encoding + kandidatscores uden at læse hele indholdet.
+Returns detected encoding + candidate scores without reading the full content.
 
 | Parameter | Type |
 |---|---|
@@ -216,29 +216,30 @@ Returnerer detekteret encoding + kandidatscores uden at læse hele indholdet.
 
 ### `set_encoding_override`
 
-Manuelt sæt encoding for en specifik fil eller for et extension-pattern.
+Manually set encoding for a specific file or for an extension pattern.
 
-| Parameter | Type | Beskrivelse |
+| Parameter | Type | Description |
 |---|---|---|
-| `path` | string | Enten path *eller* pattern |
-| `pattern` | string | F.eks. `*.pas` |
-| `encoding` | string | Encoding der skal anvendes |
+| `path` | string | Either path *or* pattern |
+| `pattern` | string | E.g. `*.pas` |
+| `encoding` | string | Encoding to apply |
 
-## Encoding-detektion (pipeline)
+## Encoding detection (pipeline)
 
-1. **BOM-check** (UTF-8 / UTF-16 LE+BE / UTF-32 LE+BE) — 100% sikker
-2. **Streng UTF-8-validering** — afviser overlong, surrogates, out-of-range
-3. **UTF-16 uden BOM** — null-byte-distribution heuristik
+1. **BOM check** (UTF-8 / UTF-16 LE+BE / UTF-32 LE+BE) — 100% certain
+2. **Strict UTF-8 validation** — rejects overlong, surrogates, out-of-range
+3. **UTF-16 without BOM** — null-byte distribution heuristic
 4. **8-bit codepage scoring**:
-   - **Windows-1252**: foretrukket hvis printable C1-tegn (€, smart quotes, ...)
-   - **ISO-8859-1**: foretrukket hvis ingen C1-bytes
-   - **ISO-8859-15**: hvis 0xA4 (€) ses uden andre C1-tegn
-5. **Fallback**: Windows-1252 (Delphi/Windows-default)
+   - **Windows-1252**: preferred if printable C1 characters (€, smart quotes, ...)
+   - **ISO-8859-1**: preferred if no C1 bytes
+   - **ISO-8859-15**: if 0xA4 (€) seen without other C1 characters
+5. **Fallback**: Windows-1252 (Delphi/Windows default)
 
-## Sidecar-cache
+## Sidecar cache
 
-`.windsurf-encoding.json` placeres i workspace-roden (mappen med `.git`,
-`.windsurf`, `*.dproj`, `*.groupproj`, `.svn`, eller `.hg`). Format:
+`.windsurf-encoding.json` is placed in the workspace root (the directory
+containing `.git`, `.windsurf`, `*.dproj`, `*.groupproj`, `.svn`, or `.hg`).
+Format:
 
 ```json
 {
@@ -257,102 +258,102 @@ Manuelt sæt encoding for en specifik fil eller for et extension-pattern.
 }
 ```
 
-`manual: true` markerer entries sat eksplicit via `set_encoding_override` —
-disse overskrives ikke af auto-detektion.
+`manual: true` marks entries set explicitly via `set_encoding_override` —
+these are not overwritten by auto-detection.
 
-## Round-trip eksempel
+## Round-trip example
 
-Fil før (Windows-1252):
+File before (Windows-1252):
 ```
 75 6E 69 74 20 54 65 73 74 3B 0D 0A 2F 2F 20 E6 F8 E5
 ```
 
-Læst via `read_text_file`:
+Read via `read_text_file`:
 ```
 unit Test;\r\n// æøå
 ```
 
-Skrevet tilbage via `write_text_file` med samme indhold:
+Written back via `write_text_file` with the same content:
 ```
 75 6E 69 74 20 54 65 73 74 3B 0D 0A 2F 2F 20 E6 F8 E5
 ```
 
-Bytes er identiske — encoding er bevaret.
+Bytes are identical — encoding is preserved.
 
-## Begrænsninger og fremtidige forbedringer
+## Limitations and future improvements
 
-- **Klient-integration**: Vi kan ikke garantere at AI-værktøjet rent faktisk
-  kalder `write_text_file` i stedet for sin native filskrivning. Det afhænger af
-  hvordan tool-beskrivelserne får LLM'en til at vælge værktøjet. Test empirisk.
-- **MacRoman**: Detekteres ikke aktivt endnu — koden har struktur til det men
-  scoring er minimal.
-- **Store filer**: Heuristik kører kun på første 64 KB. Det er hurtigt og
-  tilstrækkeligt for typiske kildefiler.
-- **Concurrent skrivning**: Fil-skrivning (både brugerfiler og sidecar-cache)
-  sker atomisk via temp-fil + rename, så en crash aldrig efterlader en halvskrevet
-  fil. Sidecar-cachen merger med disk-indhold inden skrivning, så entries fra
-  andre instanser bevares. Der er dog intet fil-låsning-lag — ved ægte samtidige
-  skrivninger til *samme* fil fra to instanser vinder den sidste.
+- **Client integration**: There is no guarantee that the AI tool will actually
+  call `write_text_file` instead of its native file writing. It depends on
+  how the tool descriptions cause the LLM to choose the tool. Test empirically.
+- **MacRoman**: Not actively detected yet — the code has the structure for it but
+  scoring is minimal.
+- **Large files**: Heuristics run only on the first 64 KB. This is fast and
+  sufficient for typical source files.
+- **Concurrent writes**: File writing (both user files and sidecar cache)
+  is atomic via temp file + rename, so a crash never leaves a half-written
+  file. The sidecar cache merges with disk content before writing, so entries from
+  other instances are preserved. However, there is no file-locking layer — with truly
+  concurrent writes to the *same* file from two instances, the last one wins.
 
 ## Tests
 
-To måder at køre tests:
+Two ways to run tests:
 
-### Kommandolinje (CI/build)
+### Command line (CI/build)
 
 ```cmd
 build.bat
 ```
 
-Bygger og kører DUnitX-konsolrunneren. Output i terminal, exit code 0 ved
+Builds and runs the DUnitX console runner. Output in terminal, exit code 0 on
 success.
 
-### TestInsight i RAD Studio (under udvikling)
+### TestInsight in RAD Studio (during development)
 
-`tests\EncodingMCPTests.dpr` har en `{$IFDEF TESTINSIGHT}` der vælger mellem
-to runners:
+`tests\EncodingMCPTests.dpr` has a `{$IFDEF TESTINSIGHT}` that selects between
+two runners:
 
-| Build-config | Define | Runner |
+| Build config | Define | Runner |
 |---|---|---|
-| Debug (IDE) | `TESTINSIGHT` defineret | TestInsight (resultater til View → TestInsight) |
-| Release (build.bat) | ikke defineret | DUnitX-konsol med stdout-output |
+| Debug (IDE) | `TESTINSIGHT` defined | TestInsight (results to View → TestInsight) |
+| Release (build.bat) | not defined | DUnitX console with stdout output |
 
-`TESTINSIGHT` er sat i `tests\EncodingMCPTests.dproj`'s Debug-konfiguration —
-ingen ekstra setup nødvendig efter første gang du har installeret TestInsight.
+`TESTINSIGHT` is set in `tests\EncodingMCPTests.dproj`'s Debug configuration —
+no extra setup required after the first time you install TestInsight.
 
-#### Engangs-setup (kun første gang i en frisk Delphi-installation)
+#### One-time setup (only first time on a fresh Delphi installation)
 
-1. **Installér TestInsight**:
-   [github.com/Stefan-Glienke/TestInsight](https://github.com/Stefan-Glienke/TestInsight) — gratis open source af Stefan Glienke.
-2. **Library Path**: I IDE'en, **Tools → Options → Language → Delphi → Library**
-   → tilføj TestInsight `Source`-mappen til **Library Path** for **Win64**.
-   På Windows ligger den typisk i
-   `%LOCALAPPDATA%\Programs\TestInsight\Source` efter installation.
+1. **Install TestInsight**:
+   [github.com/Stefan-Glienke/TestInsight](https://github.com/Stefan-Glienke/TestInsight) — free open source by Stefan Glienke.
+2. **Library Path**: In the IDE, **Tools → Options → Language → Delphi → Library**
+   → add the TestInsight `Source` folder to **Library Path** for **Win64**.
+   On Windows it is typically located at
+   `%LOCALAPPDATA%\Programs\TestInsight\Source` after installation.
 
-#### Daglig brug
+#### Daily use
 
-1. Åbn `tests\EncodingMCPTests.dproj` i RAD Studio.
-2. Vælg **Debug**-konfigurationen (default). Compile (Ctrl+F9).
-3. Åbn **View → TestInsight** (eller View → Other Windows → TestInsight).
-4. Klik **Run** i TestInsight-panelet — resultater dukker op live, og du kan
-   dobbeltklikke på en fejl for at hoppe direkte til linjen i editoren.
+1. Open `tests\EncodingMCPTests.dproj` in RAD Studio.
+2. Select the **Debug** configuration (default). Compile (Ctrl+F9).
+3. Open **View → TestInsight** (or View → Other Windows → TestInsight).
+4. Click **Run** in the TestInsight panel — results appear live, and you can
+   double-click a failure to jump directly to the line in the editor.
 
-Tests dækker:
+Tests cover:
 
-- BOM-detektion (UTF-8/16 LE/BE)
-- UTF-8 streng-validering (incl. overlong, surrogates, lone start bytes)
-- Codepage-heuristik (Windows-1252 vs ISO-8859-1 vs ISO-8859-15)
-- Line-ending detektion (CRLF/LF/Mixed)
-- End-to-end round-trip (læs Windows-1252 → skriv tilbage, byte-sammenlign)
-- BOM-skrivning og default UTF-8 BOM for nye filer
-- Atomisk filskrivning (ingen .tmp-fil efterladt)
-- Cache-merge (to instanser bevarer hinandens entries)
+- BOM detection (UTF-8/16 LE/BE)
+- Strict UTF-8 validation (incl. overlong, surrogates, lone start bytes)
+- Codepage heuristics (Windows-1252 vs ISO-8859-1 vs ISO-8859-15)
+- Line-ending detection (CRLF/LF/Mixed)
+- End-to-end round-trip (read Windows-1252 → write back, byte comparison)
+- BOM writing and default UTF-8 BOM for new files
+- Atomic file writing (no .tmp file left behind)
+- Cache merge (two instances preserve each other's entries)
 
-## Bidrag
+## Contributing
 
-Pull requests og issues er velkomne. Kør `build.bat` før du sender en PR for at
-sikre at testsuiten fortsat passerer.
+Pull requests and issues are welcome. Run `build.bat` before submitting a PR to
+ensure the test suite still passes.
 
-## Licens
+## License
 
-Udgivet under [MIT License](LICENSE) — Copyright (c) 2026 Thomas Vedel.
+Released under the [MIT License](LICENSE) — Copyright (c) 2026 Thomas Vedel.

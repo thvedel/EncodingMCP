@@ -1,8 +1,8 @@
 ﻿unit MCP.Server;
 
 /// <summary>
-///   MCP-server der dispatcher JSON-RPC requests til tool-handlers og
-///   håndterer MCP-lifecycle (initialize, tools/list, tools/call).
+///   MCP server that dispatches JSON-RPC requests to tool handlers and
+///   manages the MCP lifecycle (initialize, tools/list, tools/call).
 /// </summary>
 
 interface
@@ -22,7 +22,7 @@ const
 
 type
   /// <summary>
-  ///   MCP-server. Læser linjer fra stdin, dispatcher til tools, skriver svar til stdout.
+  ///   MCP server. Reads lines from stdin, dispatches to tools, writes responses to stdout.
   /// </summary>
   TMcpServer = class
   strict private
@@ -38,7 +38,7 @@ type
     constructor Create(ARegistry: TToolRegistry; ACacheManager: TCacheManager);
     destructor Destroy; override;
     /// <summary>
-    ///   Hovedløkken. Returnerer når stdin lukkes.
+    ///   Main loop. Returns when stdin is closed.
     /// </summary>
     procedure Run;
   end;
@@ -135,8 +135,8 @@ begin
     on E: Exception do
     begin
       TLog.Error('Tool "%s" failed: %s', [LToolName, E.Message]);
-      // MCP-konvention: tool-fejl returneres som content med isError=true,
-      // ikke som JSON-RPC error
+      // MCP convention: tool errors are returned as content with isError=true,
+      // not as JSON-RPC errors
       Result := BuildTextResult(Format('Error: %s', [E.Message]), True);
     end;
   end;
@@ -157,7 +157,7 @@ begin
       end
       else if ARequest.Method = 'notifications/initialized' then
       begin
-        // Notifikation, intet svar
+        // Notification, no response expected
         Exit;
       end
       else if ARequest.Method = 'tools/list' then
@@ -165,8 +165,8 @@ begin
       else if ARequest.Method = 'tools/call' then
       begin
         LResultValue := HandleToolsCall(ARequest.Params);
-        // Persistér evt. cache-ændringer efter hver tool-kørsel.
-        // FlushAll er idempotent og no-op hvis intet er dirty.
+        // Persist any cache changes after each tool call.
+        // FlushAll is idempotent and a no-op if nothing is dirty.
         if FCacheManager <> nil then
           FCacheManager.FlushAll;
       end
@@ -188,7 +188,7 @@ begin
       if not ARequest.IsNotification then
       begin
         LResponseJson := BuildJsonRpcResult(ARequest.Id, LResultValue);
-        LResultValue := nil; // ejerskab overdraget til BuildJsonRpcResult
+        LResultValue := nil; // ownership transferred to BuildJsonRpcResult
         FTransport.WriteLine(LResponseJson);
       end
       else
