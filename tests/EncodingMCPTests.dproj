@@ -31,8 +31,8 @@
     </PropertyGroup>
     <PropertyGroup Condition="'$(Base)'!=''">
         <SanitizedProjectName>EncodingMCPTests</SanitizedProjectName>
-        <DCC_ExeOutput>..\build\$(Platform)\$(Config)</DCC_ExeOutput>
         <DCC_DcuOutput>..\build\$(Platform)\$(Config)\dcu</DCC_DcuOutput>
+        <DCC_ExeOutput>..\build\$(Platform)\$(Config)</DCC_ExeOutput>
         <DCC_ImageBase>00400000</DCC_ImageBase>
         <DCC_Namespace>System;Xml;Data;Datasnap;Web;Soap;$(DCC_Namespace)</DCC_Namespace>
         <Icns_MainIcns>$(BDS)\bin\delphi_PROJECTICNS.icns</Icns_MainIcns>
@@ -75,6 +75,7 @@
         <DCCReference Include="Tests.Encoding.Detector.pas"/>
         <DCCReference Include="Tests.Encoding.Heuristics.pas"/>
         <DCCReference Include="Tests.FileIO.Roundtrip.pas"/>
+        <DCCReference Include="Tests.FileIO.LineRange.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
@@ -100,12 +101,10 @@
                 <Platform value="Android">False</Platform>
                 <Platform value="Android64">False</Platform>
                 <Platform value="Linux64">False</Platform>
-                <Platform value="OSX32">False</Platform>
                 <Platform value="Win32">False</Platform>
                 <Platform value="Win64">True</Platform>
-                <Platform value="iOSDevice32">False</Platform>
-                <Platform value="iOSDevice64">False</Platform>
-                <Platform value="iOSSimulator">False</Platform>
+                <Platform value="Win64x">False</Platform>
+                <Platform value="WinARM64EC">False</Platform>
             </Platforms>
         </BorlandProject>
         <ProjectFileVersion>12</ProjectFileVersion>
