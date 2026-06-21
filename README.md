@@ -173,6 +173,8 @@ UTF-8 along with metadata.
 | `path` | string | Absolute path to the file |
 | `head` | integer | Optional: only first N lines |
 | `tail` | integer | Optional: only last N lines |
+| `startLine` | integer | Optional: 1-based line number to start reading from. Use with `endLine` for a specific range. Takes priority over `head`/`tail`. |
+| `endLine` | integer | Optional: 1-based line number to stop at (inclusive). Use with `startLine` for a specific range. Takes priority over `head`/`tail`. |
 
 Output (JSON in `content[0].text`):
 
@@ -348,6 +350,7 @@ Tests cover:
 - BOM writing and default UTF-8 BOM for new files
 - Atomic file writing (no .tmp file left behind)
 - Cache merge (two instances preserve each other's entries)
+- Line-range reading (startLine/endLine interval, clamping, priority over head/tail)
 
 ## Contributing
 

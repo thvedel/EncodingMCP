@@ -35,8 +35,11 @@ type
 /// <param name="ACacheManager">Cache manager. Must not be nil.</param>
 /// <param name="AHead">If &gt; 0, return only the first N lines.</param>
 /// <param name="ATail">If &gt; 0, return only the last N lines.</param>
+/// <param name="AStartLine">If &gt; 0, return lines starting from this 1-based line number.</param>
+/// <param name="AEndLine">If &gt; 0, return lines up to and including this 1-based line number.</param>
 function ReadTextFile(const APath: string; ACacheManager: TCacheManager;
-  AHead: Integer = 0; ATail: Integer = 0): TReadResult;
+  AHead: Integer = 0; ATail: Integer = 0;
+  AStartLine: Integer = 0; AEndLine: Integer = 0): TReadResult;
 
 implementation
 
@@ -108,7 +111,8 @@ begin
   end;
 end;
 
-function ApplyHeadTail(const AContent: string; AHead, ATail: Integer;
+function ApplyHeadTail(const AContent: string; AHead, ATail,
+  AStartLine, AEndLine: Integer;
   out ATotalLines, AReturnedLines: Integer): string;
 var
   LLines: TArray<string>;
@@ -125,12 +129,36 @@ begin
   // Count lines by splitting on LF (CR is handled as part of line content)
   LLines := AContent.Split([#10]);
   ATotalLines := Length(LLines);
-  if (AHead <= 0) and (ATail <= 0) then
+
+  // Priority: startLine/endLine > head > tail
+  if (AStartLine > 0) or (AEndLine > 0) then
+  begin
+    // Convert 1-based to 0-based indices
+    if AStartLine > 0 then
+      LStart := AStartLine - 1
+    else
+      LStart := 0;
+    if AEndLine > 0 then
+      LEnd := AEndLine - 1
+    else
+      LEnd := ATotalLines - 1;
+    // Clamp to valid range
+    if LStart >= ATotalLines then
+      LStart := ATotalLines - 1;
+    if LEnd >= ATotalLines then
+      LEnd := ATotalLines - 1;
+    if LStart > LEnd then
+    begin
+      AReturnedLines := 0;
+      Exit('');
+    end;
+  end
+  else if (AHead <= 0) and (ATail <= 0) then
   begin
     AReturnedLines := ATotalLines;
     Exit(AContent);
-  end;
-  if (AHead > 0) and (AHead < ATotalLines) then
+  end
+  else if (AHead > 0) and (AHead < ATotalLines) then
   begin
     LStart := 0;
     LEnd := AHead - 1;
@@ -145,6 +173,7 @@ begin
     AReturnedLines := ATotalLines;
     Exit(AContent);
   end;
+
   LBuilder := TStringBuilder.Create;
   try
     for I := LStart to LEnd do
@@ -161,7 +190,8 @@ begin
 end;
 
 function ReadTextFile(const APath: string; ACacheManager: TCacheManager;
-  AHead: Integer; ATail: Integer): TReadResult;
+  AHead: Integer; ATail: Integer;
+  AStartLine: Integer; AEndLine: Integer): TReadResult;
 var
   LBytes: TBytes;
   LDetected: TDetectedEncoding;
@@ -223,7 +253,7 @@ begin
   Result.LineEnding := LDetected.LineEnding;
   Result.Confidence := LDetected.Confidence;
   Result.Content := ApplyHeadTail(Result.Content, AHead, ATail,
-    Result.TotalLines, Result.ReturnedLines);
+    AStartLine, AEndLine, Result.TotalLines, Result.ReturnedLines);
 
   // Update cache (unless there is a manual entry we should not overwrite)
   if not (LHasCached and LEntry.Manual) then

@@ -31,7 +31,8 @@ uses
   FileIO.Writer in '..\src\FileIO.Writer.pas',
   Tests.Encoding.Detector in 'Tests.Encoding.Detector.pas',
   Tests.Encoding.Heuristics in 'Tests.Encoding.Heuristics.pas',
-  Tests.FileIO.Roundtrip in 'Tests.FileIO.Roundtrip.pas';
+  Tests.FileIO.Roundtrip in 'Tests.FileIO.Roundtrip.pas',
+  Tests.FileIO.LineRange in 'Tests.FileIO.LineRange.pas';
 
 procedure RunConsole;
 var

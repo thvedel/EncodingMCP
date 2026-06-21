@@ -56,7 +56,7 @@ end;
 
 function TReadFileTool.BuildInputSchema: TJSONObject;
 var
-  LProps, LPath, LHead, LTail: TJSONObject;
+  LProps, LPath, LHead, LTail, LStartLine, LEndLine: TJSONObject;
   LRequired: TJSONArray;
 begin
   Result := TJSONObject.Create;
@@ -77,6 +77,22 @@ begin
     LTail.AddPair('description', 'Optional: only return the last N lines.');
     LTail.AddPair('minimum', TJSONNumber.Create(1));
     LProps.AddPair('tail', LTail);
+    LStartLine := TJSONObject.Create;
+    LStartLine.AddPair('type', 'integer');
+    LStartLine.AddPair('description',
+      'Optional: 1-based line number to start reading from. ' +
+      'Use together with endLine to read a specific line range. ' +
+      'Takes priority over head/tail when specified.');
+    LStartLine.AddPair('minimum', TJSONNumber.Create(1));
+    LProps.AddPair('startLine', LStartLine);
+    LEndLine := TJSONObject.Create;
+    LEndLine.AddPair('type', 'integer');
+    LEndLine.AddPair('description',
+      'Optional: 1-based line number to stop reading at (inclusive). ' +
+      'Use together with startLine to read a specific line range. ' +
+      'Takes priority over head/tail when specified.');
+    LEndLine.AddPair('minimum', TJSONNumber.Create(1));
+    LProps.AddPair('endLine', LEndLine);
     Result.AddPair('properties', LProps);
     LRequired := TJSONArray.Create;
     LRequired.Add('path');
@@ -127,7 +143,7 @@ end;
 function TReadFileTool.Execute(AArguments: TJSONObject): TJSONObject;
 var
   LPath: string;
-  LHead, LTail: Integer;
+  LHead, LTail, LStartLine, LEndLine: Integer;
   LResult: TReadResult;
   LJson: TJSONObject;
 begin
@@ -136,7 +152,9 @@ begin
     raise Exception.Create('Missing required argument "path"');
   LHead := GetIntArg(AArguments, 'head', 0);
   LTail := GetIntArg(AArguments, 'tail', 0);
-  LResult := ReadTextFile(LPath, FCacheManager, LHead, LTail);
+  LStartLine := GetIntArg(AArguments, 'startLine', 0);
+  LEndLine := GetIntArg(AArguments, 'endLine', 0);
+  LResult := ReadTextFile(LPath, FCacheManager, LHead, LTail, LStartLine, LEndLine);
   LJson := TJSONObject.Create;
   try
     LJson.AddPair('path', LPath);
