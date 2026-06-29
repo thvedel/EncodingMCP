@@ -30,6 +30,7 @@ implementation
 uses
   System.IOUtils,
   Encoding.Types,
+  Encoding.Workspace,
   FileIO.Reader;
 
 { TReadFileTool }
@@ -93,6 +94,30 @@ begin
       'Takes priority over head/tail when specified.');
     LEndLine.AddPair('minimum', TJSONNumber.Create(1));
     LProps.AddPair('endLine', LEndLine);
+    var LContextLines := TJSONObject.Create;
+    LContextLines.AddPair('type', 'integer');
+    LContextLines.AddPair('description',
+      'Optional: number of extra lines to include before and after the ' +
+      'startLine/endLine range or each search match for additional context. ' +
+      'Applies when startLine/endLine or searchText is specified.');
+    LContextLines.AddPair('minimum', TJSONNumber.Create(0));
+    LProps.AddPair('contextLines', LContextLines);
+    var LMetadataOnly := TJSONObject.Create;
+    LMetadataOnly.AddPair('type', 'boolean');
+    LMetadataOnly.AddPair('description',
+      'Optional: if true, return only metadata (encoding, lineEnding, ' +
+      'totalLines, etc.) without file content. Useful for checking file ' +
+      'properties without transferring the full text.');
+    LProps.AddPair('metadataOnly', LMetadataOnly);
+    var LSearchText := TJSONObject.Create;
+    LSearchText.AddPair('type', 'string');
+    LSearchText.AddPair('description',
+      'Optional: search for lines containing this text (case-insensitive). ' +
+      'Returns only matching lines with line-number prefixes. ' +
+      'Non-contiguous regions are separated by "...". ' +
+      'Use contextLines to include surrounding lines. ' +
+      'Takes priority over head/tail/startLine/endLine.');
+    LProps.AddPair('searchText', LSearchText);
     Result.AddPair('properties', LProps);
     LRequired := TJSONArray.Create;
     LRequired.Add('path');
@@ -143,18 +168,25 @@ end;
 function TReadFileTool.Execute(AArguments: TJSONObject): TJSONObject;
 var
   LPath: string;
-  LHead, LTail, LStartLine, LEndLine: Integer;
+  LHead, LTail, LStartLine, LEndLine, LContextLines: Integer;
+  LMetadataOnly: Boolean;
+  LSearchText: string;
   LResult: TReadResult;
   LJson: TJSONObject;
 begin
   LPath := GetStringArg(AArguments, 'path');
   if LPath = '' then
     raise Exception.Create('Missing required argument "path"');
+  ValidatePathInWorkspace(LPath);
   LHead := GetIntArg(AArguments, 'head', 0);
   LTail := GetIntArg(AArguments, 'tail', 0);
   LStartLine := GetIntArg(AArguments, 'startLine', 0);
   LEndLine := GetIntArg(AArguments, 'endLine', 0);
-  LResult := ReadTextFile(LPath, FCacheManager, LHead, LTail, LStartLine, LEndLine);
+  LContextLines := GetIntArg(AArguments, 'contextLines', 0);
+  LMetadataOnly := GetBoolArg(AArguments, 'metadataOnly', False);
+  LSearchText := GetStringArg(AArguments, 'searchText');
+  LResult := ReadTextFile(LPath, FCacheManager, LHead, LTail, LStartLine, LEndLine,
+    LContextLines, LSearchText);
   LJson := TJSONObject.Create;
   try
     LJson.AddPair('path', LPath);
@@ -166,7 +198,11 @@ begin
     LJson.AddPair('bytesRead', TJSONNumber.Create(LResult.BytesRead));
     LJson.AddPair('totalLines', TJSONNumber.Create(LResult.TotalLines));
     LJson.AddPair('returnedLines', TJSONNumber.Create(LResult.ReturnedLines));
-    LJson.AddPair('content', LResult.Content);
+    LJson.AddPair('lineNumberStart', TJSONNumber.Create(LResult.LineNumberStart));
+    if LResult.MatchCount > 0 then
+      LJson.AddPair('matchCount', TJSONNumber.Create(LResult.MatchCount));
+    if not LMetadataOnly then
+      LJson.AddPair('content', LResult.Content);
   except
     LJson.Free;
     raise;

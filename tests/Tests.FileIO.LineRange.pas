@@ -1,4 +1,4 @@
-unit Tests.FileIO.LineRange;
+﻿unit Tests.FileIO.LineRange;
 
 /// <summary>
 ///   Tests for the line-range reading feature (startLine/endLine parameters)

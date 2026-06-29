@@ -175,6 +175,9 @@ UTF-8 along with metadata.
 | `tail` | integer | Optional: only last N lines |
 | `startLine` | integer | Optional: 1-based line number to start reading from. Use with `endLine` for a specific range. Takes priority over `head`/`tail`. |
 | `endLine` | integer | Optional: 1-based line number to stop at (inclusive). Use with `startLine` for a specific range. Takes priority over `head`/`tail`. |
+| `contextLines` | integer | Optional: extra lines to include before and after the `startLine`/`endLine` range. Only applies when a line range is specified. |
+| `metadataOnly` | boolean | Optional: if true, return only metadata (encoding, lineEnding, totalLines, etc.) without file content. |
+| `searchText` | string | Optional: search for lines containing this text (case-insensitive). Returns matching lines with line-number prefixes, separated by `...` between non-contiguous regions. Use `contextLines` for surrounding context. Takes priority over head/tail/startLine/endLine. |
 
 Output (JSON in `content[0].text`):
 
@@ -188,7 +191,9 @@ Output (JSON in `content[0].text`):
   "fromCache": false,
   "bytesRead": 1234,
   "totalLines": 42,
+  "lineNumberStart": 1,
   "returnedLines": 42,
+  "matchCount": 3,
   "content": "unit MainForm; ..."
 }
 ```
@@ -208,6 +213,143 @@ New files default to UTF-8 with BOM.
 | `hasBom` | boolean | Optional |
 | `createIfMissing` | boolean | Default true |
 
+### `edit_text_file`
+
+Edits a text file by search/replace or line-range replacement, preserving the
+file's original encoding, BOM, and line-ending style.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `path` | string | Absolute path to the file (must exist) |
+| `oldText` | string | Text to find and replace. Leave empty for range mode. |
+| `newText` | string | Replacement text (required) |
+| `startLine` | integer | Optional: 1-based start line for range replacement |
+| `endLine` | integer | Optional: 1-based end line (inclusive) for range replacement |
+| `maxReplacements` | integer | Optional: max replacements (default 1). 0 = unlimited. |
+| `dryRun` | boolean | Optional: if true, compute the result without writing to disk. |
+| `edits` | array | Optional: array of atomic edits (see below). Overrides top-level oldText/newText. |
+
+**Modes:**
+- **Search/replace**: provide `oldText` + `newText`. If `maxReplacements` is 1
+  (default) and multiple matches exist, an error is returned with the match count.
+- **Range replacement**: provide `startLine` + `endLine` + `newText` with empty
+  `oldText`. The specified line range is replaced entirely.
+- **Multi-edit (atomic)**: provide `edits` array. Each edit is applied sequentially.
+  If any edit fails, no changes are written. Each item supports: `oldText`, `newText`,
+  `startLine`, `endLine`, `maxReplacements`.
+
+Output (JSON in `content[0].text`):
+
+```json
+{
+  "path": "...",
+  "encoding": "Windows-1252",
+  "hasBom": false,
+  "lineEnding": "CRLF",
+  "bytesWritten": 1234,
+  "replacements": 1,
+  "changed": true,
+  "diff": "@@ -1,3 +1,3 @@\n context\n-old line\n+new line\n context\n"
+}
+```
+
+The `diff` field is only present when `changed` is `true`. It contains a unified
+diff snippet showing removed (`-`) and added (`+`) lines with context.
+
+### `read_text_files`
+
+Reads multiple files in a single call. Reduces MCP round-trips during
+cross-file refactoring. Each file entry supports the same parameters as
+`read_text_file`. Errors for individual files are reported inline without
+aborting the batch.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `files` | array | Array of file specifications (see below) |
+
+Each entry in `files`:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `path` | string | Absolute path to the file (required) |
+| `head` | integer | Optional: first N lines |
+| `tail` | integer | Optional: last N lines |
+| `startLine` | integer | Optional: 1-based start line |
+| `endLine` | integer | Optional: 1-based end line (inclusive) |
+| `contextLines` | integer | Optional: extra context lines |
+| `metadataOnly` | boolean | Optional: skip content |
+| `searchText` | string | Optional: case-insensitive line search |
+
+Output (JSON in `content[0].text`):
+
+```json
+{
+  "totalFiles": 3,
+  "succeeded": 2,
+  "failed": 1,
+  "results": [
+    { "path": "...", "encoding": "UTF-8", "content": "...", ... },
+    { "path": "...", "encoding": "Windows-1252", "content": "...", ... },
+    { "path": "...", "error": "File not found: ..." }
+  ]
+}
+```
+
+### `write_text_files`
+
+Writes multiple files in a single call with encoding-aware conversion.
+Each file entry can specify its own encoding, lineEnding, and hasBom options.
+Errors for individual files are reported inline without aborting the batch.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `files` | array | Array of file specifications (see below) |
+
+Each entry in `files`:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `path` | string | Absolute path to the file (required) |
+| `content` | string | UTF-8 content to write (required) |
+| `encoding` | string | Optional: target encoding (UTF-8, Windows-1252, etc.) |
+| `lineEnding` | string | Optional: CRLF, LF, or CR |
+| `hasBom` | boolean | Optional: write a BOM |
+| `createIfMissing` | boolean | Optional (default true): create if not exists |
+
+Output (JSON in `content[0].text`):
+
+```json
+{
+  "totalFiles": 2,
+  "succeeded": 2,
+  "failed": 0,
+  "results": [
+    { "path": "...", "encoding": "UTF-8", "bytesWritten": 123, "created": true, ... },
+    { "path": "...", "encoding": "Windows-1252", "bytesWritten": 456, "created": false, ... }
+  ]
+}
+```
+
+### `list_files`
+
+Lists files in a directory recursively, optionally filtered by glob pattern.
+Returns relative paths from the specified directory.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `path` | string | Absolute path to the directory to list (must be within workspace) |
+| `pattern` | string | Optional: glob pattern to filter files (e.g. `*.pas`, `*.dfm`) |
+
+Output (JSON in `content[0].text`):
+
+```json
+{
+  "path": "C:/Projects/MyApp",
+  "totalFiles": 12,
+  "files": ["src/Main.pas", "src/Utils.pas", ...]
+}
+```
+
 ### `detect_encoding`
 
 Returns detected encoding + candidate scores without reading the full content.
@@ -225,6 +367,12 @@ Manually set encoding for a specific file or for an extension pattern.
 | `path` | string | Either path *or* pattern |
 | `pattern` | string | E.g. `*.pas` |
 | `encoding` | string | Encoding to apply |
+
+## Security
+
+All tools validate that the requested `path` resides within a detected workspace
+root (directory containing `.git`, `.windsurf`, `*.dproj`, etc.). Paths that
+resolve outside the workspace are rejected.
 
 ## Encoding detection (pipeline)
 
@@ -351,6 +499,22 @@ Tests cover:
 - Atomic file writing (no .tmp file left behind)
 - Cache merge (two instances preserve each other's entries)
 - Line-range reading (startLine/endLine interval, clamping, priority over head/tail)
+- Edit tool: search/replace (single, multi, unlimited, max-N, deletion)
+- Edit tool: range replacement (middle, first, last, entire, clamp, invalid)
+- Edit tool: encoding preservation, no-change detection, error handling
+- lineNumberStart output for head, tail, startLine/endLine, and full file
+- contextLines expansion and clamping for line-range reads
+- dryRun mode for edit_text_file (no-write verification)
+- Cache invalidation on file change (size/timestamp staleness check)
+- Manual override survives cache invalidation
+- Search-in-file: matching, context, case-insensitivity, region merging, match count
+- Optimistic lock: external modification detection, successful edit without conflict
+- Workspace restriction: path validation (inside workspace acceptance)
+- list_files tool: recursive listing, glob filtering, empty directory, subdirectories, missing directory
+- read_text_files (batch-read): single/multiple files, inline error handling, metadataOnly, head param, searchText, empty array
+- Multi-edit (atomic): two edits applied, second-fails-nothing-written, dryRun, empty array, mixed modes
+- write_text_files (batch-write): single/multiple files, inline error handling, creates new, empty array, encoding override
+- Diff output: contains changed lines, empty when no change, multi-edit shows all changes
 
 ## Contributing
 

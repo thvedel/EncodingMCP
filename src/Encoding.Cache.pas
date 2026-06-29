@@ -25,6 +25,8 @@ type
     LineEnding: TLineEnding;
     Manual: Boolean; // Set via set_encoding_override
     DetectedAt: TDateTime;
+    FileSize: Int64;      // Size at detection time (for staleness check)
+    FileTimestamp: TDateTime; // Last-modified at detection time
   end;
 
   /// <summary>
@@ -263,6 +265,20 @@ begin
         LEntry.DetectedAt := 0;
       end;
     end;
+    LValue := LEntryObj.GetValue('fileSize');
+    if LValue is TJSONNumber then
+      LEntry.FileSize := TJSONNumber(LValue).AsInt64
+    else
+      LEntry.FileSize := 0;
+    LValue := LEntryObj.GetValue('fileTimestamp');
+    if LValue is TJSONString then
+    begin
+      try
+        LEntry.FileTimestamp := ISO8601ToDate(TJSONString(LValue).Value, False);
+      except
+        LEntry.FileTimestamp := 0;
+      end;
+    end;
     ATarget.AddOrSetValue(NormalizeRelative(LPair.JsonString.Value), LEntry);
   end;
 end;
@@ -318,6 +334,10 @@ begin
         LEntryObj.AddPair('manual', TJSONBool.Create(True));
       if LEntry.DetectedAt > 0 then
         LEntryObj.AddPair('detectedAt', DateToISO8601(LEntry.DetectedAt, False));
+      if LEntry.FileSize > 0 then
+        LEntryObj.AddPair('fileSize', TJSONNumber.Create(LEntry.FileSize));
+      if LEntry.FileTimestamp > 0 then
+        LEntryObj.AddPair('fileTimestamp', DateToISO8601(LEntry.FileTimestamp, False));
       LFilesObj.AddPair(LPath, LEntryObj);
     end;
     LOverridesObj := TJSONObject.Create;

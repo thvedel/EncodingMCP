@@ -32,7 +32,17 @@ uses
   Tests.Encoding.Detector in 'Tests.Encoding.Detector.pas',
   Tests.Encoding.Heuristics in 'Tests.Encoding.Heuristics.pas',
   Tests.FileIO.Roundtrip in 'Tests.FileIO.Roundtrip.pas',
-  Tests.FileIO.LineRange in 'Tests.FileIO.LineRange.pas';
+  Tests.FileIO.LineRange in 'Tests.FileIO.LineRange.pas',
+  FileIO.Editor in '..\src\FileIO.Editor.pas',
+  MCP.Tools in '..\src\MCP.Tools.pas',
+  Tools.ListFiles in '..\src\Tools.ListFiles.pas',
+  Tests.FileIO.EditFile in 'Tests.FileIO.EditFile.pas',
+  Tests.FileIO.Enhancements in 'Tests.FileIO.Enhancements.pas',
+  Tests.Tools.ListFiles in 'Tests.Tools.ListFiles.pas',
+  Tools.BatchRead in '..\src\Tools.BatchRead.pas',
+  Tests.Tools.BatchRead in 'Tests.Tools.BatchRead.pas',
+  Tools.BatchWrite in '..\src\Tools.BatchWrite.pas',
+  Tests.Tools.BatchWrite in 'Tests.Tools.BatchWrite.pas';
 
 procedure RunConsole;
 var

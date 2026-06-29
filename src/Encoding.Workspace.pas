@@ -22,6 +22,13 @@ function FindWorkspaceRoot(const APath: string): string;
 /// </summary>
 function MakeRelativePath(const AWorkspaceRoot, AAbsolutePath: string): string;
 
+/// <summary>
+///   Validates that APath resolves to a location within its workspace root.
+///   Raises an exception if the path contains directory traversal components
+///   that would place it outside the workspace.
+/// </summary>
+procedure ValidatePathInWorkspace(const APath: string);
+
 implementation
 
 uses
@@ -91,6 +98,17 @@ begin
   else
     Result := LAbs;
   Result := Result.Replace('\', '/');
+end;
+
+procedure ValidatePathInWorkspace(const APath: string);
+var
+  LResolved, LRoot: string;
+begin
+  LResolved := TPath.GetFullPath(APath);
+  LRoot := IncludeTrailingPathDelimiter(FindWorkspaceRoot(LResolved));
+  if not SameText(Copy(LResolved, 1, Length(LRoot)), LRoot) then
+    raise Exception.CreateFmt(
+      'Path "%s" is outside workspace root "%s"', [APath, LRoot]);
 end;
 
 end.

@@ -25,6 +25,8 @@ type
     BytesRead: Int64;
     TotalLines: Integer;
     ReturnedLines: Integer;
+    LineNumberStart: Integer; // 1-based line number of first returned line (0 if empty)
+    MatchCount: Integer;      // Number of lines matching searchText (0 if no search)
   end;
 
 /// <summary>
@@ -37,9 +39,13 @@ type
 /// <param name="ATail">If &gt; 0, return only the last N lines.</param>
 /// <param name="AStartLine">If &gt; 0, return lines starting from this 1-based line number.</param>
 /// <param name="AEndLine">If &gt; 0, return lines up to and including this 1-based line number.</param>
+/// <param name="AContextLines">Extra lines to include before and after the startLine/endLine range.</param>
+/// <param name="ASearchText">If non-empty, return only lines containing this text (case-insensitive) with line numbers.</param>
 function ReadTextFile(const APath: string; ACacheManager: TCacheManager;
   AHead: Integer = 0; ATail: Integer = 0;
-  AStartLine: Integer = 0; AEndLine: Integer = 0): TReadResult;
+  AStartLine: Integer = 0; AEndLine: Integer = 0;
+  AContextLines: Integer = 0;
+  const ASearchText: string = ''): TReadResult;
 
 implementation
 
@@ -112,8 +118,8 @@ begin
 end;
 
 function ApplyHeadTail(const AContent: string; AHead, ATail,
-  AStartLine, AEndLine: Integer;
-  out ATotalLines, AReturnedLines: Integer): string;
+  AStartLine, AEndLine, AContextLines: Integer;
+  out ATotalLines, AReturnedLines, ALineNumberStart: Integer): string;
 var
   LLines: TArray<string>;
   LStart, LEnd, I: Integer;
@@ -124,6 +130,7 @@ begin
   begin
     ATotalLines := 0;
     AReturnedLines := 0;
+    ALineNumberStart := 0;
     Exit('');
   end;
   // Count lines by splitting on LF (CR is handled as part of line content)
@@ -147,15 +154,28 @@ begin
       LStart := ATotalLines - 1;
     if LEnd >= ATotalLines then
       LEnd := ATotalLines - 1;
+    // Apply context lines
+    if AContextLines > 0 then
+    begin
+      LStart := LStart - AContextLines;
+      LEnd := LEnd + AContextLines;
+    end;
+    // Clamp again after context expansion
+    if LStart < 0 then
+      LStart := 0;
+    if LEnd >= ATotalLines then
+      LEnd := ATotalLines - 1;
     if LStart > LEnd then
     begin
       AReturnedLines := 0;
+      ALineNumberStart := 0;
       Exit('');
     end;
   end
   else if (AHead <= 0) and (ATail <= 0) then
   begin
     AReturnedLines := ATotalLines;
+    ALineNumberStart := 1;
     Exit(AContent);
   end
   else if (AHead > 0) and (AHead < ATotalLines) then
@@ -171,9 +191,11 @@ begin
   else
   begin
     AReturnedLines := ATotalLines;
+    ALineNumberStart := 1;
     Exit(AContent);
   end;
 
+  ALineNumberStart := LStart + 1; // Convert 0-based back to 1-based
   LBuilder := TStringBuilder.Create;
   try
     for I := LStart to LEnd do
@@ -189,9 +211,95 @@ begin
   end;
 end;
 
+/// <summary>
+///   Searches content for lines containing ASearchText (case-insensitive).
+///   Returns matching lines with line-number prefixes and optional context,
+///   separated by '...' between non-contiguous regions.
+/// </summary>
+function ApplySearch(const AContent, ASearchText: string; AContextLines: Integer;
+  out ATotalLines, AReturnedLines, ALineNumberStart, AMatchCount: Integer): string;
+var
+  LLines: TArray<string>;
+  LInclude: TArray<Boolean>;
+  LSearchLower: string;
+  I, J, LStart, LEnd, LLastIncluded, LLineNumWidth: Integer;
+  LBuilder: TStringBuilder;
+  LPrevIncluded: Boolean;
+begin
+  ATotalLines := 0;
+  AReturnedLines := 0;
+  ALineNumberStart := 0;
+  AMatchCount := 0;
+
+  if (AContent = '') or (ASearchText = '') then
+    Exit('');
+
+  LLines := AContent.Split([#10]);
+  ATotalLines := Length(LLines);
+  SetLength(LInclude, ATotalLines);
+
+  // Find matching lines (case-insensitive)
+  LSearchLower := ASearchText.ToLower;
+  for I := 0 to ATotalLines - 1 do
+  begin
+    if LLines[I].ToLower.Contains(LSearchLower) then
+    begin
+      Inc(AMatchCount);
+      LStart := Max(0, I - AContextLines);
+      LEnd := Min(ATotalLines - 1, I + AContextLines);
+      for J := LStart to LEnd do
+        LInclude[J] := True;
+    end;
+  end;
+
+  if AMatchCount = 0 then
+    Exit('');
+
+  // Find first/last included line and count returned lines
+  LLastIncluded := 0;
+  for I := 0 to ATotalLines - 1 do
+  begin
+    if LInclude[I] then
+    begin
+      Inc(AReturnedLines);
+      if ALineNumberStart = 0 then
+        ALineNumberStart := I + 1;
+      LLastIncluded := I;
+    end;
+  end;
+
+  LLineNumWidth := Length(IntToStr(LLastIncluded + 1));
+
+  LBuilder := TStringBuilder.Create;
+  try
+    LPrevIncluded := False;
+    for I := 0 to ATotalLines - 1 do
+    begin
+      if LInclude[I] then
+      begin
+        if (not LPrevIncluded) and (LBuilder.Length > 0) then
+          LBuilder.Append('...' + #10);
+        LBuilder.Append(Format('%*d', [LLineNumWidth, I + 1]));
+        LBuilder.Append(#9);
+        LBuilder.Append(LLines[I]);
+        if I < LLastIncluded then
+          LBuilder.Append(#10);
+        LPrevIncluded := True;
+      end
+      else
+        LPrevIncluded := False;
+    end;
+    Result := LBuilder.ToString;
+  finally
+    LBuilder.Free;
+  end;
+end;
+
 function ReadTextFile(const APath: string; ACacheManager: TCacheManager;
   AHead: Integer; ATail: Integer;
-  AStartLine: Integer; AEndLine: Integer): TReadResult;
+  AStartLine: Integer; AEndLine: Integer;
+  AContextLines: Integer;
+  const ASearchText: string): TReadResult;
 var
   LBytes: TBytes;
   LDetected: TDetectedEncoding;
@@ -201,16 +309,28 @@ var
   LHasCached: Boolean;
   LOverrideId: TEncodingId;
   LBom: TBomInfo;
+  LFileSize: Int64;
+  LFileTimestamp: TDateTime;
 begin
   if not TFile.Exists(APath) then
     raise Exception.CreateFmt('File not found: %s', [APath]);
   LBytes := ReadAllBytes(APath);
+  LFileSize := Length(LBytes);
+  LFileTimestamp := TFile.GetLastWriteTime(APath);
   Result := Default(TReadResult);
-  Result.BytesRead := Length(LBytes);
+  Result.BytesRead := LFileSize;
   Result.FromCache := False;
 
   ACacheManager.Resolve(APath, LCache, LRelative);
   LHasCached := LCache.TryGet(LRelative, LEntry);
+
+  // Invalidate non-manual cache if file has changed since detection
+  if LHasCached and (not LEntry.Manual) and
+     ((LEntry.FileSize <> LFileSize) or
+      (Abs(LEntry.FileTimestamp - LFileTimestamp) > (1 / SecsPerDay))) then
+  begin
+    LHasCached := False;
+  end;
 
   // Determine encoding priority:
   //   1) BOM (always 100% certain)
@@ -252,8 +372,14 @@ begin
   Result.HasBom := LDetected.HasBom;
   Result.LineEnding := LDetected.LineEnding;
   Result.Confidence := LDetected.Confidence;
-  Result.Content := ApplyHeadTail(Result.Content, AHead, ATail,
-    AStartLine, AEndLine, Result.TotalLines, Result.ReturnedLines);
+  if ASearchText <> '' then
+    Result.Content := ApplySearch(Result.Content, ASearchText, AContextLines,
+      Result.TotalLines, Result.ReturnedLines, Result.LineNumberStart,
+      Result.MatchCount)
+  else
+    Result.Content := ApplyHeadTail(Result.Content, AHead, ATail,
+      AStartLine, AEndLine, AContextLines,
+      Result.TotalLines, Result.ReturnedLines, Result.LineNumberStart);
 
   // Update cache (unless there is a manual entry we should not overwrite)
   if not (LHasCached and LEntry.Manual) then
@@ -264,6 +390,8 @@ begin
     LEntry.LineEnding := LDetected.LineEnding;
     LEntry.Manual := False;
     LEntry.DetectedAt := Now;
+    LEntry.FileSize := LFileSize;
+    LEntry.FileTimestamp := LFileTimestamp;
     LCache.Put(LRelative, LEntry);
   end;
 end;

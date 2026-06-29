@@ -20,7 +20,12 @@ uses
   Tools.ReadFile in 'src\Tools.ReadFile.pas',
   Tools.WriteFile in 'src\Tools.WriteFile.pas',
   Tools.DetectEncoding in 'src\Tools.DetectEncoding.pas',
-  Tools.SetOverride in 'src\Tools.SetOverride.pas';
+  Tools.SetOverride in 'src\Tools.SetOverride.pas',
+  FileIO.Editor in 'src\FileIO.Editor.pas',
+  Tools.EditFile in 'src\Tools.EditFile.pas',
+  Tools.ListFiles in 'src\Tools.ListFiles.pas',
+  Tools.BatchRead in 'src\Tools.BatchRead.pas',
+  Tools.BatchWrite in 'src\Tools.BatchWrite.pas';
 
 procedure ConfigureLogging;
 var
@@ -43,6 +48,10 @@ begin
   ARegistry.Register(TWriteFileTool.Create(ACacheManager));
   ARegistry.Register(TDetectEncodingTool.Create(ACacheManager));
   ARegistry.Register(TSetOverrideTool.Create(ACacheManager));
+  ARegistry.Register(TEditFileTool.Create(ACacheManager));
+  ARegistry.Register(TListFilesTool.Create(ACacheManager));
+  ARegistry.Register(TBatchReadTool.Create(ACacheManager));
+  ARegistry.Register(TBatchWriteTool.Create(ACacheManager));
 end;
 
 var

@@ -29,6 +29,7 @@ implementation
 
 uses
   Encoding.Types,
+  Encoding.Workspace,
   FileIO.Writer;
 
 { TWriteFileTool }
@@ -151,6 +152,7 @@ begin
   LPath := GetStringArg(AArguments, 'path', '');
   if LPath = '' then
     raise Exception.Create('Missing required argument "path"');
+  ValidatePathInWorkspace(LPath);
   LContent := GetStringArg(AArguments, 'content', '');
   LOptions := MakeDefaultWriteOptions;
   LEncodingName := GetStringArg(AArguments, 'encoding', '');
