@@ -88,6 +88,16 @@ type
     procedure WorkspaceRestriction_AllowsPathInsideWorkspace;
     [Test]
     procedure WorkspaceRestriction_RejectsPathOutsideWorkspace;
+    [Test]
+    procedure WorkspaceRestriction_RejectsTraversalEscape;
+    [Test]
+    procedure WorkspaceRestriction_RejectsSiblingPrefixDirectory;
+    [Test]
+    procedure WorkspaceRestriction_AllowsRootDirectoryItself;
+    [Test]
+    procedure WorkspaceRestriction_MultipleRootsBothAllowed;
+    [Test]
+    procedure WorkspaceRestriction_NoRootsRequiresMarker;
 
     // Cache invalidation
     [Test]
@@ -500,33 +510,138 @@ var
 begin
   LPath := MakeTempPath('inside.txt');
   WriteUtf8File(LPath, 'test');
-  // Should not raise - path is inside workspace
-  LRaised := False;
+  SetWorkspaceRoots([FTempDir]);
   try
-    ValidatePathInWorkspace(LPath);
-  except
-    LRaised := True;
+    LRaised := False;
+    try
+      ValidatePathInWorkspace(LPath);
+    except
+      LRaised := True;
+    end;
+    Assert.IsFalse(LRaised, 'ValidatePathInWorkspace should not raise for path inside workspace');
+  finally
+    SetWorkspaceRoots([]);
   end;
-  Assert.IsFalse(LRaised, 'ValidatePathInWorkspace should not raise for path inside workspace');
 end;
 
 procedure TEnhancementsTests.WorkspaceRestriction_RejectsPathOutsideWorkspace;
+begin
+  SetWorkspaceRoots([FTempDir]);
+  try
+    Assert.WillRaise(
+      procedure
+      begin
+        ValidatePathInWorkspace('C:\Windows\System32\drivers\etc\hosts');
+      end,
+      EWorkspaceViolation,
+      'A path outside every configured root must be rejected');
+  finally
+    SetWorkspaceRoots([]);
+  end;
+end;
+
+procedure TEnhancementsTests.WorkspaceRestriction_RejectsTraversalEscape;
+begin
+  SetWorkspaceRoots([FTempDir]);
+  try
+    Assert.WillRaise(
+      procedure
+      begin
+        ValidatePathInWorkspace(TPath.Combine(FTempDir, '..\..\Windows\win.ini'));
+      end,
+      EWorkspaceViolation,
+      '".." traversal out of the workspace must be rejected');
+  finally
+    SetWorkspaceRoots([]);
+  end;
+end;
+
+procedure TEnhancementsTests.WorkspaceRestriction_RejectsSiblingPrefixDirectory;
+var
+  LSibling: string;
+begin
+  // FTempDir + 'X' shares a string prefix with FTempDir but is a different directory
+  LSibling := FTempDir + 'X';
+  TDirectory.CreateDirectory(LSibling);
+  try
+    SetWorkspaceRoots([FTempDir]);
+    try
+      Assert.WillRaise(
+        procedure
+        begin
+          ValidatePathInWorkspace(TPath.Combine(LSibling, 'other.txt'));
+        end,
+        EWorkspaceViolation,
+        'A sibling directory sharing a name prefix must not be treated as inside');
+    finally
+      SetWorkspaceRoots([]);
+    end;
+  finally
+    TDirectory.Delete(LSibling, True);
+  end;
+end;
+
+procedure TEnhancementsTests.WorkspaceRestriction_AllowsRootDirectoryItself;
 var
   LRaised: Boolean;
 begin
-  // Test that a completely unrelated path outside any workspace raises.
-  // On Windows, try a root-level path that has no workspace markers above it.
-  // Note: ValidatePathInWorkspace uses FindWorkspaceRoot which falls back to
-  // the file's own directory, so a resolved absolute path is always 'inside'.
-  // The real guard is against crafted relative paths with '..' in tool input.
-  // Here we just verify it doesn't crash on a valid path (no false positives).
-  LRaised := False;
+  SetWorkspaceRoots([FTempDir]);
   try
-    ValidatePathInWorkspace(MakeTempPath('another.txt'));
-  except
-    LRaised := True;
+    LRaised := False;
+    try
+      ValidatePathInWorkspace(FTempDir);
+    except
+      LRaised := True;
+    end;
+    Assert.IsFalse(LRaised, 'The workspace root itself must be accessible');
+  finally
+    SetWorkspaceRoots([]);
   end;
-  Assert.IsFalse(LRaised, 'ValidatePathInWorkspace should accept resolved paths');
+end;
+
+procedure TEnhancementsTests.WorkspaceRestriction_MultipleRootsBothAllowed;
+var
+  LSecond: string;
+  LRaised: Boolean;
+begin
+  LSecond := FTempDir + '_second';
+  TDirectory.CreateDirectory(LSecond);
+  try
+    SetWorkspaceRoots([FTempDir, LSecond]);
+    try
+      LRaised := False;
+      try
+        ValidatePathInWorkspace(TPath.Combine(FTempDir, 'a.txt'));
+        ValidatePathInWorkspace(TPath.Combine(LSecond, 'b.txt'));
+      except
+        LRaised := True;
+      end;
+      Assert.IsFalse(LRaised, 'Both configured roots must be accessible');
+      Assert.AreEqual(2, Integer(Length(GetWorkspaceRoots)));
+    finally
+      SetWorkspaceRoots([]);
+    end;
+  finally
+    TDirectory.Delete(LSecond, True);
+  end;
+end;
+
+procedure TEnhancementsTests.WorkspaceRestriction_NoRootsRequiresMarker;
+var
+  LDrive, LNoMarkerPath: string;
+begin
+  SetWorkspaceRoots([]);
+  // FTempDir has a .git marker created in Setup, so it is accepted
+  Assert.IsTrue(IsPathInWorkspace(MakeTempPath('marked.txt')),
+    'A path under a .git marker must be accepted in marker-discovery mode');
+
+  // A path under a non-existent top-level directory has no marker above it,
+  // unless the drive root itself carries one (guard against that).
+  LDrive := TPath.GetPathRoot(TPath.GetTempPath);
+  LNoMarkerPath := TPath.Combine(LDrive, '__EncodingMCP_NoMarker__\file.txt');
+  if not IsPathInWorkspace(LDrive) then
+    Assert.IsFalse(IsPathInWorkspace(LNoMarkerPath),
+      'A path with no workspace marker must be rejected in marker-discovery mode');
 end;
 
 // --- Cache invalidation ---

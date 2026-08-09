@@ -370,9 +370,41 @@ Manually set encoding for a specific file or for an extension pattern.
 
 ## Security
 
-All tools validate that the requested `path` resides within a detected workspace
-root (directory containing `.git`, `.windsurf`, `*.dproj`, etc.). Paths that
-resolve outside the workspace are rejected.
+All tools validate that the requested `path` resides within an **allowed
+workspace root**. Paths are fully resolved first, so `..` traversal cannot be
+used to escape. Requests outside the allowed roots are rejected with an error.
+
+The allowed roots are determined at startup, in this order:
+
+1. **Command-line arguments** — each non-switch argument is a workspace root:
+   `EncodingMCP.exe C:\Projects\MyApp C:\Projects\Shared`
+2. **`ENCODING_MCP_WORKSPACE`** environment variable — semicolon-separated list
+3. **Fallback**: the workspace containing the current directory
+
+In addition, roots advertised by the MCP client during `initialize`
+(`rootUri`, `rootPath` or the MCP `roots` array) are added to the allowed set.
+
+Configuring the root explicitly is recommended, since the working directory the
+MCP client uses to launch the server is not guaranteed:
+
+```json
+{
+  "mcpServers": {
+    "encoding-bridge": {
+      "command": "<PATH>",
+      "args": ["C:\\Projects\\MyApp"]
+    }
+  }
+}
+```
+
+If no root can be determined at all, the server falls back to requiring a real
+workspace marker (`.git`, `.windsurf`, `*.dproj`, `*.groupproj`, `.svn`, `.hg`)
+at or above the requested path.
+
+> **Note:** Containment is checked on the resolved path string. Symlinks and
+> junctions that point out of the workspace are not resolved and can therefore
+> still reach outside it.
 
 ## Encoding detection (pipeline)
 
@@ -509,7 +541,8 @@ Tests cover:
 - Manual override survives cache invalidation
 - Search-in-file: matching, context, case-insensitivity, region merging, match count
 - Optimistic lock: external modification detection, successful edit without conflict
-- Workspace restriction: path validation (inside workspace acceptance)
+- Workspace restriction: allowed roots, traversal escape, sibling prefix directory,
+  root directory itself, multiple roots, marker-discovery fallback
 - list_files tool: recursive listing, glob filtering, empty directory, subdirectories, missing directory
 - read_text_files (batch-read): single/multiple files, inline error handling, metadataOnly, head param, searchText, empty array
 - Multi-edit (atomic): two edits applied, second-fails-nothing-written, dryRun, empty array, mixed modes

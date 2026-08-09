@@ -30,6 +30,7 @@ implementation
 uses
   System.DateUtils,
   Encoding.Types,
+  Encoding.Workspace,
   Encoding.Cache;
 
 constructor TSetOverrideTool.Create(ACacheManager: TCacheManager);
@@ -129,6 +130,7 @@ begin
 
   if LPath <> '' then
   begin
+    ValidatePathInWorkspace(LPath);
     FCacheManager.Resolve(LPath, LCache, LRelative);
     LEntry := Default(TCacheEntry);
     if not LCache.TryGet(LRelative, LEntry) then
@@ -141,8 +143,8 @@ begin
   end
   else
   begin
-    // Pattern - select cache for current working directory
-    FCacheManager.Resolve(GetCurrentDir, LCache, LRelative);
+    // Pattern - workspace-wide override, stored in the primary workspace root
+    FCacheManager.Resolve(PrimaryWorkspaceRoot, LCache, LRelative);
     LCache.SetExtensionOverride(LPattern, LEncoding);
     LApplied := 'pattern:' + LPattern + ' (workspace ' + LCache.WorkspaceRoot + ')';
   end;

@@ -18,7 +18,7 @@ uses
 const
   MCP_PROTOCOL_VERSION = '2024-11-05';
   SERVER_NAME = 'encoding-bridge';
-  SERVER_VERSION = '0.1.0';
+  SERVER_VERSION = '1.1.0';
 
 type
   /// <summary>
@@ -31,6 +31,7 @@ type
     FCacheManager: TCacheManager;
     FInitialized: Boolean;
     function HandleInitialize(AParams: TJSONValue): TJSONValue;
+    procedure AdoptClientRoots(AParams: TJSONValue);
     function HandleToolsList: TJSONValue;
     function HandleToolsCall(AParams: TJSONValue): TJSONValue;
     procedure DispatchRequest(ARequest: TJsonRpcRequest);
@@ -46,7 +47,9 @@ type
 implementation
 
 uses
-  MCP.Logging;
+  MCP.Logging,
+  System.Generics.Collections,
+  Encoding.Workspace;
 
 { TMcpServer }
 
@@ -65,10 +68,96 @@ begin
   inherited;
 end;
 
+/// <summary>
+///   Converts a file:// URI to a local Windows path. Returns '' if AUri is not
+///   a file URI.
+/// </summary>
+function FileUriToPath(const AUri: string): string;
+var
+  I, LCode: Integer;
+  LBuilder: TStringBuilder;
+begin
+  if not AUri.StartsWith('file://', True) then
+    Exit('');
+  Result := Copy(AUri, Length('file://') + 1, MaxInt);
+  // file:///C:/x -> /C:/x ; strip the leading slash before a drive letter
+  if (Length(Result) >= 3) and (Result[1] = '/') and (Result[3] = ':') then
+    Delete(Result, 1, 1);
+  // Percent-decoding (spaces etc.)
+  LBuilder := TStringBuilder.Create(Length(Result));
+  try
+    I := 1;
+    while I <= Length(Result) do
+    begin
+      if (Result[I] = '%') and (I + 2 <= Length(Result)) and
+         TryStrToInt('$' + Copy(Result, I + 1, 2), LCode) then
+      begin
+        LBuilder.Append(Char(LCode));
+        Inc(I, 3);
+      end
+      else
+      begin
+        LBuilder.Append(Result[I]);
+        Inc(I);
+      end;
+    end;
+    Result := LBuilder.ToString;
+  finally
+    LBuilder.Free;
+  end;
+  Result := Result.Replace('/', '\');
+end;
+
+procedure TMcpServer.AdoptClientRoots(AParams: TJSONValue);
+var
+  LParams, LRootObj: TJSONObject;
+  LRoots: TJSONArray;
+  LUri, LPath: string;
+  I: Integer;
+begin
+  LParams := AParams as TJSONObject;
+  if LParams = nil then
+    Exit;
+
+  // Single rootUri (LSP-style, sent by some clients)
+  if LParams.TryGetValue<string>('rootUri', LUri) then
+  begin
+    LPath := FileUriToPath(LUri);
+    if (LPath <> '') and AddWorkspaceRoot(LPath) then
+      TLog.Info('Workspace root from client rootUri: %s', [LPath]);
+  end;
+  if LParams.TryGetValue<string>('rootPath', LPath) and (LPath <> '') then
+    if AddWorkspaceRoot(LPath) then
+      TLog.Info('Workspace root from client rootPath: %s', [LPath]);
+
+  // MCP "roots" array: [{ "uri": "file:///...", "name": "..." }]
+  if LParams.TryGetValue<TJSONArray>('roots', LRoots) and (LRoots <> nil) then
+    for I := 0 to LRoots.Count - 1 do
+    begin
+      LRootObj := LRoots.Items[I] as TJSONObject;
+      if LRootObj = nil then
+        Continue;
+      if not LRootObj.TryGetValue<string>('uri', LUri) then
+        Continue;
+      LPath := FileUriToPath(LUri);
+      if (LPath <> '') and AddWorkspaceRoot(LPath) then
+        TLog.Info('Workspace root from client roots[]: %s', [LPath]);
+    end;
+end;
+
 function TMcpServer.HandleInitialize(AParams: TJSONValue): TJSONValue;
 var
   LResult, LCapabilities, LServerInfo, LToolsCap: TJSONObject;
+  LClientVersion: string;
 begin
+  if (AParams <> nil) and (AParams is TJSONObject) and
+     TJSONObject(AParams).TryGetValue<string>('protocolVersion', LClientVersion) and
+     (LClientVersion <> MCP_PROTOCOL_VERSION) then
+    TLog.Info('Client requested protocol %s, server implements %s',
+      [LClientVersion, MCP_PROTOCOL_VERSION]);
+
+  AdoptClientRoots(AParams);
+
   LResult := TJSONObject.Create;
   try
     LResult.AddPair('protocolVersion', MCP_PROTOCOL_VERSION);
