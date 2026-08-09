@@ -18,7 +18,7 @@ uses
 const
   MCP_PROTOCOL_VERSION = '2024-11-05';
   SERVER_NAME = 'encoding-bridge';
-  SERVER_VERSION = '1.1.0';
+  SERVER_VERSION = '1.2.0';
 
 type
   /// <summary>
