@@ -51,6 +51,7 @@ begin
   FTempDir := TPath.Combine(TPath.GetTempPath, 'ListFilesTest_' +
     FormatDateTime('yyyymmdd_hhnnsszzz', Now));
   TDirectory.CreateDirectory(FTempDir);
+  TDirectory.CreateDirectory(TPath.Combine(FTempDir, '.git'));
   FCacheManager := TCacheManager.Create;
 end;
 

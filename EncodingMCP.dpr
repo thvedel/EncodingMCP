@@ -42,6 +42,57 @@ begin
     TLog.SetMinLevel(TLogLevel.Info);
 end;
 
+procedure ConfigureWorkspaceRoots;
+var
+  LEnv, LRoot: string;
+  LParts: TArray<string>;
+  I: Integer;
+  LCount: Integer;
+begin
+  LCount := 0;
+  // 1. Command line arguments (each non-switch argument is a workspace root)
+  for I := 1 to ParamCount do
+  begin
+    LRoot := ParamStr(I);
+    if (LRoot = '') or LRoot.StartsWith('-') or LRoot.StartsWith('/') then
+      Continue;
+    if AddWorkspaceRoot(LRoot) then
+      Inc(LCount)
+    else
+      TLog.Warning('Ignoring workspace root (not an existing directory): %s', [LRoot]);
+  end;
+  // 2. ENCODING_MCP_WORKSPACE, semicolon-separated
+  LEnv := GetEnvironmentVariable('ENCODING_MCP_WORKSPACE');
+  if LEnv <> '' then
+  begin
+    LParts := LEnv.Split([';']);
+    for I := 0 to High(LParts) do
+    begin
+      LRoot := LParts[I].Trim;
+      if LRoot = '' then
+        Continue;
+      if AddWorkspaceRoot(LRoot) then
+        Inc(LCount)
+      else
+        TLog.Warning('Ignoring workspace root (not an existing directory): %s', [LRoot]);
+    end;
+  end;
+  // 3. Fall back to the workspace containing the current directory
+  if LCount = 0 then
+  begin
+    LRoot := FindWorkspaceRoot(GetCurrentDir);
+    if AddWorkspaceRoot(LRoot) then
+      Inc(LCount);
+  end;
+
+  if LCount = 0 then
+    TLog.Warning('No workspace root configured; all tool calls will be rejected. ' +
+      'Pass a directory as an argument or set ENCODING_MCP_WORKSPACE.')
+  else
+    TLog.Info('Allowed workspace root(s): %s',
+      [string.Join('; ', GetWorkspaceRoots)]);
+end;
+
 procedure RegisterTools(ARegistry: TToolRegistry; ACacheManager: TCacheManager);
 begin
   ARegistry.Register(TReadFileTool.Create(ACacheManager));
@@ -64,6 +115,7 @@ begin
   ReportMemoryLeaksOnShutdown := True;
   {$ENDIF}
   ConfigureLogging;
+  ConfigureWorkspaceRoots;
   try
     LCacheManager := TCacheManager.Create;
     try

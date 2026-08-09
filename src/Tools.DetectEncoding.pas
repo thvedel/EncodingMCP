@@ -32,6 +32,7 @@ uses
   System.IOUtils,
   Encoding.Types,
   Encoding.Detector,
+  Encoding.Workspace,
   Encoding.Heuristics;
 
 constructor TDetectEncodingTool.Create(ACacheManager: TCacheManager);
@@ -103,6 +104,7 @@ begin
   LPath := GetStringArg(AArguments, 'path');
   if LPath = '' then
     raise Exception.Create('Missing required argument "path"');
+  ValidatePathInWorkspace(LPath);
   if not TFile.Exists(LPath) then
     raise Exception.CreateFmt('File not found: %s', [LPath]);
   LStream := TFileStream.Create(LPath, fmOpenRead or fmShareDenyWrite);
