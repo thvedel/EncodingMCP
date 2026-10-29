@@ -15,7 +15,7 @@ get corrupted when an LLM reads or writes these files.
 
 The server automatically detects encoding (BOM, UTF-8 validation, or heuristic
 codepage scoring) and translates between file encoding and UTF-8 on read and
-write. Encoding is remembered per file in a `.windsurf-encoding.json` sidecar in
+write. Encoding is remembered per file in a `.encoding-mcp.json` sidecar in
 the workspace root.
 
 ## Quick Start
@@ -78,7 +78,8 @@ before running `build.bat`.
 build.bat
 ```
 
-Building is done via `msbuild` against the two `.dproj` files. Output goes to
+Building is done via `msbuild /t:Rebuild` against the two `.dproj` files —
+always a full build, so stale DCUs can never hide errors. Output goes to
 `build\$(Platform)\$(Config)\` — by default `build\Win64\Release\`. Change
 `PLATFORM`/`CONFIG` in `build.bat` to build differently (e.g. `Win32`
 or `Debug`).
@@ -94,6 +95,82 @@ popular clients.
 In all examples, replace `<PATH>` with the absolute path to
 `EncodingMCP.exe` (either downloaded from Releases or built locally).
 Backslashes in JSON must be escaped as `\\`.
+
+### Workspace roots
+
+The server only serves files inside its **allowed workspace roots** (see
+[Security](#security)). Without configuration it falls back to the workspace
+containing the directory the client starts it in, which is often *not* your
+project. Declare the roots explicitly in the client config instead.
+
+There are two equivalent ways; both accept any number of roots:
+
+1. **`args`** — one array element per root:
+
+   ```json
+   "command": "<PATH>",
+   "args": ["C:\\Projects\\MyApp", "C:\\Projects\\Shared", "D:\\Components"]
+   ```
+
+2. **`env`** — the `ENCODING_MCP_WORKSPACE` variable with a semicolon-separated
+   list:
+
+   ```json
+   "command": "<PATH>",
+   "args": [],
+   "env": {
+     "ENCODING_MCP_WORKSPACE": "C:\\Projects\\MyApp;C:\\Projects\\Shared;D:\\Components"
+   }
+   ```
+
+If both are present, the roots are combined. Each root must be an absolute path
+to an existing directory — anything else is skipped with a warning on `stderr`.
+Sub-directories are included automatically, so list the top-level folders only.
+The first root is the default for `set_encoding_override` when no `directory`
+is given. Roots advertised by the MCP client during `initialize` are added to
+the configured set as well.
+
+### GitHub Copilot
+
+**Copilot CLI** (also used by IDE integrations that embed the CLI, e.g. RAD
+Studio): edit `%USERPROFILE%\.copilot\mcp-config.json` for a global setup, or
+`.mcp.json` in the repository root for a per-project setup:
+
+```json
+{
+  "mcpServers": {
+    "encoding-bridge": {
+      "type": "local",
+      "command": "C:\\Tools\\EncodingMCP.exe",
+      "args": ["C:\\Projects\\MyApp", "C:\\Projects\\Shared"],
+      "tools": ["*"]
+    }
+  }
+}
+```
+
+**VS Code** (Copilot Chat agent mode): edit `.vscode\mcp.json` in the
+workspace, or add the same block under `"mcp"` → `"servers"` in the user
+`settings.json`:
+
+```json
+{
+  "servers": {
+    "encoding-bridge": {
+      "type": "stdio",
+      "command": "C:\\Tools\\EncodingMCP.exe",
+      "args": [],
+      "env": {
+        "ENCODING_MCP_WORKSPACE": "${workspaceFolder};C:\\Projects\\Shared"
+      }
+    }
+  }
+}
+```
+
+VS Code expands `${workspaceFolder}` to the open folder, so the same file can
+be committed and used by the whole team. Restart the Copilot session (CLI) or
+run **MCP: Restart Server** (VS Code) after changing the config.
 
 ### Windsurf / Codeium
 
@@ -188,6 +265,8 @@ Output (JSON in `content[0].text`):
   "hasBom": false,
   "lineEnding": "CRLF",
   "confidence": 0.95,
+  "source": "detected",
+  "format": "text",
   "fromCache": false,
   "bytesRead": 1234,
   "totalLines": 42,
@@ -198,25 +277,79 @@ Output (JSON in `content[0].text`):
 }
 ```
 
+- `source` tells where the encoding came from: `bom`, `fileOverride`,
+  `patternOverride` or `detected`.
+- `format` is `text`. A Delphi form stored in binary format is refused with an
+  error and `format: "binary-dfm"`, because it cannot be represented as text.
+- For a pure-ASCII file the response also contains
+  `writeRecommendation: "Windows-1252"` and a `note`: `ASCII` (even with high
+  confidence) only means that no byte above 0x7F exists, so the codepage cannot
+  be determined. See [Encoding policy](#encoding-policy).
+
 ### `write_text_file`
 
-Writes UTF-8 content to a file in the correct encoding. If the file exists,
-its original encoding is preserved (unless an `encoding` override is given).
-New files default to UTF-8 with BOM.
+Writes UTF-8 content to a file in the correct encoding. If the file exists, its
+encoding is re-checked on disk before every write (changes made by the IDE, git
+or other tools are respected), and per-file and pattern overrides apply even if
+the file has never been read. New files default to UTF-8 with BOM.
 
 | Parameter | Type | Description |
 |---|---|---|
 | `path` | string | Absolute path |
 | `content` | string | UTF-8 content |
-| `encoding` | string | Optional override (UTF-8, Windows-1252, ...) |
-| `lineEnding` | string | Optional (CRLF/LF/CR) |
-| `hasBom` | boolean | Optional |
+| `encoding` | string | Optional target encoding (UTF-8, Windows-1252, ...). Changing only the encoding keeps the existing line endings; the BOM is kept, added when switching from an 8-bit encoding to Unicode, and dropped for 8-bit encodings. |
+| `lineEnding` | string | Optional (CRLF/LF/CR). Default preserves existing. |
+| `hasBom` | boolean | Optional. Default preserves existing (true for new UTF files). `true` on a pure-ASCII file writes UTF-8 with BOM. |
 | `createIfMissing` | boolean | Default true |
+| `dryRun` | boolean | Optional: report encoding, BOM, line ending, upgrades and warnings without writing |
+| `force` | boolean | Optional (default false): allow replacing a binary DFM with text |
+
+Output (JSON in `content[0].text`):
+
+```json
+{
+  "path": "...",
+  "encoding": "Windows-1252",
+  "hasBom": false,
+  "lineEnding": "CRLF",
+  "bytesWritten": 1234,
+  "created": false,
+  "source": "detected",
+  "previousEncoding": "ASCII",
+  "upgradedFrom": "ASCII",
+  "warnings": ["..."]
+}
+```
+
+`encoding` is always the encoding actually written. `source` is `bom`,
+`fileOverride`, `patternOverride`, `detected`, `explicit` (the `encoding`
+parameter) or `default` (new file). `previousEncoding` is the encoding of the
+existing file on disk. `upgradedFrom` and `warnings` appear only when the
+encoding had to change. `dryRun: true` is echoed when set.
+
+#### Encoding policy
+
+Applies to `write_text_file`, `write_text_files` and `edit_text_file`:
+
+- **ASCII upgrade**: a pure-ASCII file has no byte that reveals its codepage.
+  When non-ASCII characters are written to it, the file becomes Windows-1252
+  (the Delphi default) — never UTF-8 without BOM, which Delphi would misread as
+  ANSI (`Ã¸` instead of `ø`). The response reports `upgradedFrom: "ASCII"` and a
+  warning. Use an override, `encoding` or `hasBom: true` to get UTF-8 with BOM
+  instead.
+- **Unrepresentable characters**: if the target encoding cannot represent a
+  character (e.g. an emoji in Windows-1252), nothing is written. The error
+  response contains `unrepresentableChars` (count) and `sample`; there is no
+  silent `?` substitution.
+- **Binary DFM guard**: an existing Delphi form stored in binary format is never
+  overwritten with text unless `force: true` is given. `read_text_file` and
+  `edit_text_file` refuse such files with `format: "binary-dfm"`.
 
 ### `edit_text_file`
 
 Edits a text file by search/replace or line-range replacement, preserving the
-file's original encoding, BOM, and line-ending style.
+file's original encoding, BOM, and line-ending style. The
+[encoding policy](#encoding-policy) applies.
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -233,10 +366,32 @@ file's original encoding, BOM, and line-ending style.
 - **Search/replace**: provide `oldText` + `newText`. If `maxReplacements` is 1
   (default) and multiple matches exist, an error is returned with the match count.
 - **Range replacement**: provide `startLine` + `endLine` + `newText` with empty
-  `oldText`. The specified line range is replaced entirely.
-- **Multi-edit (atomic)**: provide `edits` array. Each edit is applied sequentially.
-  If any edit fails, no changes are written. Each item supports: `oldText`, `newText`,
-  `startLine`, `endLine`, `maxReplacements`.
+  `oldText`. The line range is replaced entirely; an empty `newText` deletes the
+  lines including their line breaks. `startLine` = total lines + 1 appends at the
+  end of the file; a larger `startLine` is an error. A trailing line break in
+  `newText` does not add an extra blank line.
+- The two modes are mutually exclusive per edit: `oldText` together with
+  `startLine`/`endLine` is rejected instead of silently ignoring the range.
+- **Multi-edit (atomic)**: provide an `edits` array. If any edit fails, nothing
+  is written. Each item supports `oldText`, `newText`, `startLine`, `endLine`,
+  `maxReplacements`.
+
+**Line endings:** `oldText` and `newText` may use `\n`; both are normalized to
+the file's line-ending style before matching and inserting. For files with mixed
+line endings the dominant style is used.
+
+**Multi-edit semantics:**
+- All line ranges refer to the **original** file, regardless of their order in
+  the array. They are applied from the end of the file towards the beginning, so
+  one range edit never shifts the line numbers of another.
+- Overlapping ranges, and two edits appending at the same position, are rejected.
+- Search/replace edits are applied afterwards, in array order, to the result of
+  the range edits.
+- If an `oldText` would match a different number of times before and after the
+  range edits, the order is ambiguous and the call is rejected.
+- Error messages that concern one specific edit are prefixed with `Edit N:`.
+  Errors about the call as a whole (overlapping ranges, empty `edits` array)
+  have no prefix.
 
 Output (JSON in `content[0].text`):
 
@@ -253,8 +408,18 @@ Output (JSON in `content[0].text`):
 }
 ```
 
-The `diff` field is only present when `changed` is `true`. It contains a unified
-diff snippet showing removed (`-`) and added (`+`) lines with context.
+`upgradedFrom` and `warnings` are added when the [encoding policy](#encoding-policy)
+changed the encoding; `dryRun: true` is echoed when set. `replacements` counts
+search/replace matches that were replaced plus 1 for each range edit.
+
+**Diff format:** the `diff` field is only present when `changed` is `true`. It is
+a unified diff with 3 lines of context; nearby changes share one hunk, distant
+changes get separate hunks (`@@ -a,b +c,d @@`), so unchanged lines between two
+edits are not repeated. Diff lines are always separated by `\n`, whatever the
+file's line endings — the file itself is written in its own style. A line whose
+terminator differs from the file's style is marked with ` [LF]`, ` [CR]` or
+` [CRLF]`, and a missing final line break is shown as
+`\ No newline at end of file`.
 
 ### `read_text_files`
 
@@ -315,6 +480,8 @@ Each entry in `files`:
 | `lineEnding` | string | Optional: CRLF, LF, or CR |
 | `hasBom` | boolean | Optional: write a BOM |
 | `createIfMissing` | boolean | Optional (default true): create if not exists |
+| `dryRun` | boolean | Optional: report the result of the write without writing |
+| `force` | boolean | Optional (default false): allow replacing a binary DFM with text |
 
 Output (JSON in `content[0].text`):
 
@@ -352,7 +519,12 @@ Output (JSON in `content[0].text`):
 
 ### `detect_encoding`
 
-Returns detected encoding + candidate scores without reading the full content.
+Analyses the **whole** file (no size limit) with exactly the same resolution as
+`read_text_file` (BOM, overrides, detection), so both tools always report the
+same encoding. Returns `format`, `encoding`, `hasBom`, `confidence`,
+`lineEnding`, `source`, `bytesRead` and the candidate scores, plus
+`writeRecommendation`/`note` for pure-ASCII files. A binary DFM is reported
+with `format: "binary-dfm"` and a `note` instead of an encoding.
 
 | Parameter | Type |
 |---|---|
@@ -360,13 +532,28 @@ Returns detected encoding + candidate scores without reading the full content.
 
 ### `set_encoding_override`
 
-Manually set encoding for a specific file or for an extension pattern.
+Sets or removes a manual encoding override for one file or for a pattern.
 
 | Parameter | Type | Description |
 |---|---|---|
-| `path` | string | Either path *or* pattern |
-| `pattern` | string | E.g. `*.pas` |
-| `encoding` | string | Encoding to apply |
+| `path` | string | Absolute path of a single file (either `path` *or* `pattern`) |
+| `pattern` | string | File-name pattern (`*.pas`) or path pattern relative to the workspace root (`src/**/*.dfm`) |
+| `directory` | string | Optional, pattern only: a directory inside the workspace that selects the workspace root. Defaults to the first workspace root. |
+| `encoding` | string | Encoding to apply. Required unless `remove` is true. |
+| `remove` | boolean | If true, remove the override instead of setting it |
+
+- Patterns without `/` match the file name in any folder. Patterns with `/`
+  match the path relative to the workspace root and support `*`, `?` and `**`.
+  Other glob syntax is rejected with an error instead of being accepted
+  silently.
+- Pattern overrides are stored in the **outermost** sidecar and therefore apply
+  to the whole repository, including subfolders with their own `.dproj`. A
+  matching pattern in a nearer sidecar takes precedence.
+- With `remove`, a pattern is removed from every sidecar between `directory` and
+  the outermost root; the response lists them in `removedFrom`.
+- Overrides take precedence over detection, but a BOM always wins.
+- The response contains `sidecar`, `root`, `matches` and `appliesTo`, so it is
+  clear where the override was stored and which files it covers.
 
 ## Security
 
@@ -378,8 +565,13 @@ The allowed roots are determined at startup, in this order:
 
 1. **Command-line arguments** — each non-switch argument is a workspace root:
    `EncodingMCP.exe C:\Projects\MyApp C:\Projects\Shared`
-2. **`ENCODING_MCP_WORKSPACE`** environment variable — semicolon-separated list
-3. **Fallback**: the workspace containing the current directory
+2. **`ENCODING_MCP_WORKSPACE`** environment variable — semicolon-separated list,
+   combined with any roots from step 1
+3. **Fallback** (only when steps 1–2 yield nothing): the workspace containing
+   the current directory
+
+See [Workspace roots](#workspace-roots) for how to declare several roots in
+the MCP client configuration.
 
 In addition, roots advertised by the MCP client during `initialize`
 (`rootUri`, `rootPath` or the MCP `roots` array) are added to the allowed set.
@@ -417,10 +609,28 @@ at or above the requested path.
    - **ISO-8859-15**: if 0xA4 (€) seen without other C1 characters
 5. **Fallback**: Windows-1252 (Delphi/Windows default)
 
+Resolution order: BOM > per-file override > pattern override > detection. A
+file without any byte above 0x7F is reported as `ASCII`; writes to it follow the
+[ASCII upgrade](#encoding-policy) rule.
+
 ## Sidecar cache
 
-`.windsurf-encoding.json` is placed in the workspace root (the directory
-containing `.git`, `.windsurf`, `*.dproj`, `*.groupproj`, `.svn`, or `.hg`).
+Encoding information is stored in `.encoding-mcp.json` sidecars:
+
+- The **outermost sidecar** lives in the outermost workspace root: the allowed
+  workspace root containing the file, otherwise the nearest directory with
+  `.git`, `.svn` or `.hg`, otherwise the nearest directory with a workspace
+  marker (`.windsurf`, `*.dproj`, `*.groupproj`).
+- File entries are stored in the nearest existing sidecar between the file and
+  the outermost root. Reading files never creates new sidecars in subfolders,
+  even if they contain their own `.dproj`.
+- Lookups walk the chain from the nearest sidecar to the outermost one.
+- Sidecars are reloaded when they change on disk, so manual edits (adding or
+  removing overrides) take effect on the next tool call — no restart needed.
+
+A sidecar with the former name `.windsurf-encoding.json` is still read; it is
+migrated to `.encoding-mcp.json` on the next save and then deleted. If both
+files exist, `.encoding-mcp.json` wins and a warning is logged.
 Format:
 
 ```json
@@ -469,8 +679,9 @@ Bytes are identical — encoding is preserved.
   how the tool descriptions cause the LLM to choose the tool. Test empirically.
 - **MacRoman**: Not actively detected yet — the code has the structure for it but
   scoring is minimal.
-- **Large files**: Heuristics run only on the first 64 KB. This is fast and
-  sufficient for typical source files.
+- **Large files**: Detection always analyses the whole file, so a late
+  non-ASCII character is never missed. Very large files take correspondingly
+  longer.
 - **Concurrent writes**: File writing (both user files and sidecar cache)
   is atomic via temp file + rename, so a crash never leaves a half-written
   file. The sidecar cache merges with disk content before writing, so entries from
@@ -548,6 +759,20 @@ Tests cover:
 - Multi-edit (atomic): two edits applied, second-fails-nothing-written, dryRun, empty array, mixed modes
 - write_text_files (batch-write): single/multiple files, inline error handling, creates new, empty array, encoding override
 - Diff output: contains changed lines, empty when no change, multi-edit shows all changes
+- Safe write encoding: ASCII → Windows-1252 upgrade, unrepresentable characters,
+  explicit BOM, write dryRun, re-check on disk, overrides on files never read
+- Sidecar rename and migration from `.windsurf-encoding.json` (including a
+  legacy file that cannot be deleted)
+- Overrides: outermost sidecar, path patterns, invalid patterns, remove across
+  the whole sidecar chain, conflict warnings, reload after external sidecar
+  changes
+- detect/read consistency (pattern and file overrides), late non-ASCII byte,
+  binary DFM guard, ASCII write recommendation
+- Range edits: delete, append, original-file multi-edit, overlap and ambiguity
+  errors, mutually exclusive modes, line-ending normalization and fallback,
+  diff hunks and markers, large-diff fallback
+- Argument handling: null treated as absent, empty `edits`/`files` arrays,
+  missing required arguments raise `EInvalidArgumentError`
 
 ## Contributing
 

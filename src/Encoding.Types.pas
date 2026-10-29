@@ -29,6 +29,16 @@ type
 
   TLineEnding = (Unknown, Lf, CrLf, Cr, Mixed);
 
+  /// <summary>Where a resolved encoding decision came from.</summary>
+  TEncodingSource = (
+    Default,          // No information - new-file default
+    Detected,         // Heuristic detection of the file bytes
+    Bom,              // Byte order mark in the file
+    ManualOverride,   // Per-file override set via set_encoding_override
+    PatternOverride,  // Pattern override (e.g. *.pas) from the sidecar
+    Explicit          // Encoding passed explicitly by the caller
+  );
+
   /// <summary>Result of encoding detection.</summary>
   TDetectedEncoding = record
     Id: TEncodingId;
@@ -49,6 +59,9 @@ function EncodingIdName(AId: TEncodingId): string;
 function EncodingIdCodePage(AId: TEncodingId): Integer;
 function LineEndingName(ALineEnding: TLineEnding): string;
 function LineEndingFromName(const AName: string): TLineEnding;
+function EncodingSourceName(ASource: TEncodingSource): string;
+/// <summary>True for UTF-8/16/32 - the encodings that can carry a BOM.</summary>
+function IsUnicodeEncoding(AId: TEncodingId): Boolean;
 
 implementation
 
@@ -166,6 +179,25 @@ begin
   if LNorm = 'CRLF' then Exit(TLineEnding.CrLf);
   if LNorm = 'CR' then Exit(TLineEnding.Cr);
   Result := TLineEnding.Unknown;
+end;
+
+function EncodingSourceName(ASource: TEncodingSource): string;
+begin
+  case ASource of
+    TEncodingSource.Detected: Result := 'detected';
+    TEncodingSource.Bom: Result := 'bom';
+    TEncodingSource.ManualOverride: Result := 'fileOverride';
+    TEncodingSource.PatternOverride: Result := 'patternOverride';
+    TEncodingSource.Explicit: Result := 'explicit';
+  else
+    Result := 'default';
+  end;
+end;
+
+function IsUnicodeEncoding(AId: TEncodingId): Boolean;
+begin
+  Result := AId in [TEncodingId.Utf8, TEncodingId.Utf16Le, TEncodingId.Utf16Be,
+    TEncodingId.Utf32Le, TEncodingId.Utf32Be];
 end;
 
 end.

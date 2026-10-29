@@ -30,9 +30,10 @@ type
 implementation
 
 uses
-  Encoding.Types,
   Encoding.Workspace,
-  FileIO.Writer;
+  FileIO.Reader,
+  FileIO.Writer,
+  Tools.WriteFile;
 
 { TBatchWriteTool }
 
@@ -51,7 +52,10 @@ function TBatchWriteTool.GetDescription: string;
 begin
   Result :=
     'Write multiple text files in a single call with encoding-aware conversion. ' +
-    'Each file entry can specify its own encoding, lineEnding, and hasBom options. ' +
+    'Each file entry can specify its own encoding, lineEnding, hasBom, createIfMissing, ' +
+    'dryRun and force options. ' +
+    'Each result reports the encoding actually used, its source, any ASCII upgrade ' +
+    '("upgradedFrom") and "warnings". ' +
     'Errors for individual files are reported inline without aborting the batch. ' +
     'Use this for scaffolding or code generation where multiple files are created at once.';
 end;
@@ -59,8 +63,7 @@ end;
 function TBatchWriteTool.BuildInputSchema: TJSONObject;
 var
   LProps, LFiles, LFileItems, LFileProps: TJSONObject;
-  LPathProp, LContentProp, LEncProp, LLineProp, LBomProp, LCreateProp: TJSONObject;
-  LEncEnum, LLineEnum: TJSONArray;
+  LPathProp, LContentProp: TJSONObject;
   LRequired, LFileRequired: TJSONArray;
 begin
   Result := TJSONObject.Create;
@@ -72,7 +75,7 @@ begin
     LFiles.AddPair('type', 'array');
     LFiles.AddPair('description',
       'Array of file specifications to write. Each entry specifies path, content, ' +
-      'and optional encoding/lineEnding/hasBom/createIfMissing.');
+      'and optional encoding/lineEnding/hasBom/createIfMissing/dryRun/force.');
 
     LFileItems := TJSONObject.Create;
     LFileItems.AddPair('type', 'object');
@@ -88,43 +91,7 @@ begin
     LContentProp.AddPair('description', 'UTF-8 content to write.');
     LFileProps.AddPair('content', LContentProp);
 
-    LEncProp := TJSONObject.Create;
-    LEncProp.AddPair('type', 'string');
-    LEncProp.AddPair('description',
-      'Optional: target encoding. If omitted, preserves existing.');
-    LEncEnum := TJSONArray.Create;
-    LEncEnum.Add('UTF-8');
-    LEncEnum.Add('UTF-16LE');
-    LEncEnum.Add('UTF-16BE');
-    LEncEnum.Add('Windows-1252');
-    LEncEnum.Add('ISO-8859-1');
-    LEncEnum.Add('ISO-8859-15');
-    LEncEnum.Add('ASCII');
-    LEncProp.AddPair('enum', LEncEnum);
-    LFileProps.AddPair('encoding', LEncProp);
-
-    LLineProp := TJSONObject.Create;
-    LLineProp.AddPair('type', 'string');
-    LLineProp.AddPair('description',
-      'Optional: line-ending style. Default preserves existing.');
-    LLineEnum := TJSONArray.Create;
-    LLineEnum.Add('CRLF');
-    LLineEnum.Add('LF');
-    LLineEnum.Add('CR');
-    LLineProp.AddPair('enum', LLineEnum);
-    LFileProps.AddPair('lineEnding', LLineProp);
-
-    LBomProp := TJSONObject.Create;
-    LBomProp.AddPair('type', 'boolean');
-    LBomProp.AddPair('description',
-      'Optional: write a BOM. Default preserves existing or true for new UTF files.');
-    LFileProps.AddPair('hasBom', LBomProp);
-
-    LCreateProp := TJSONObject.Create;
-    LCreateProp.AddPair('type', 'boolean');
-    LCreateProp.AddPair('description',
-      'Optional (default true): create the file if it does not exist.');
-    LFileProps.AddPair('createIfMissing', LCreateProp);
+    AddWriteOptionProps(LFileProps);
 
     LFileRequired := TJSONArray.Create;
     LFileRequired.Add('path');
@@ -146,47 +113,13 @@ begin
   end;
 end;
 
-function GetStringArg(AObj: TJSONObject; const AName: string;
-  const ADefault: string = ''): string;
-var
-  LValue: TJSONValue;
-begin
-  if AObj = nil then Exit(ADefault);
-  LValue := AObj.GetValue(AName);
-  if LValue is TJSONString then
-    Result := TJSONString(LValue).Value
-  else
-    Result := ADefault;
-end;
-
-function GetBoolArg(AObj: TJSONObject; const AName: string;
-  ADefault: Boolean): Boolean;
-var
-  LValue: TJSONValue;
-begin
-  if AObj = nil then Exit(ADefault);
-  LValue := AObj.GetValue(AName);
-  if LValue is TJSONBool then
-    Result := TJSONBool(LValue).AsBoolean
-  else
-    Result := ADefault;
-end;
-
-function HasArg(AObj: TJSONObject; const AName: string): Boolean;
-begin
-  Result := (AObj <> nil) and (AObj.GetValue(AName) <> nil);
-end;
-
-function BuildFileResult(const APath: string; const AResult: TWriteResult): TJSONObject;
+function BuildFileResult(const APath: string; const AResult: TWriteResult;
+  ADryRun: Boolean): TJSONObject;
 begin
   Result := TJSONObject.Create;
   try
     Result.AddPair('path', APath);
-    Result.AddPair('encoding', EncodingIdName(AResult.EncodingId));
-    Result.AddPair('hasBom', TJSONBool.Create(AResult.HasBom));
-    Result.AddPair('lineEnding', LineEndingName(AResult.LineEnding));
-    Result.AddPair('bytesWritten', TJSONNumber.Create(AResult.BytesWritten));
-    Result.AddPair('created', TJSONBool.Create(AResult.Created));
+    AddWriteResultFields(Result, AResult, ADryRun);
   except
     Result.Free;
     raise;
@@ -211,18 +144,18 @@ var
   LFileObj: TJSONObject;
   LResultsArr: TJSONArray;
   LOuterJson: TJSONObject;
-  LPath, LContent, LEncodingName, LLineEndingName: string;
+  LPath, LContent: string;
   LOptions: TWriteOptions;
   LWriteResult: TWriteResult;
   LErrorCount: Integer;
   I: Integer;
 begin
   if AArguments = nil then
-    raise Exception.Create('Missing required argument "files"');
+    raise EInvalidArgumentError.Create('Missing required argument "files"');
 
   LFilesArr := AArguments.GetValue('files') as TJSONArray;
   if (LFilesArr = nil) or (LFilesArr.Count = 0) then
-    raise Exception.Create('Missing or empty required argument "files"');
+    raise EInvalidArgumentError.Create('Missing or empty required argument "files"');
 
   LErrorCount := 0;
   LResultsArr := TJSONArray.Create;
@@ -243,33 +176,21 @@ begin
         ValidatePathInWorkspace(LPath);
 
         LContent := GetStringArg(LFileObj, 'content');
-        LOptions := MakeDefaultWriteOptions;
-
-        LEncodingName := GetStringArg(LFileObj, 'encoding');
-        if LEncodingName <> '' then
-        begin
-          LOptions.EncodingOverride := EncodingIdFromName(LEncodingName);
-          if LOptions.EncodingOverride = TEncodingId.Unknown then
-            raise Exception.CreateFmt('Unsupported encoding: %s', [LEncodingName]);
-        end;
-
-        LLineEndingName := GetStringArg(LFileObj, 'lineEnding');
-        if LLineEndingName <> '' then
-          LOptions.LineEndingOverride := LineEndingFromName(LLineEndingName);
-
-        if HasArg(LFileObj, 'hasBom') then
-        begin
-          if GetBoolArg(LFileObj, 'hasBom', False) then
-            LOptions.HasBomOverride := 1
-          else
-            LOptions.HasBomOverride := 0;
-        end;
-
-        LOptions.CreateIfMissing := GetBoolArg(LFileObj, 'createIfMissing', True);
+        LOptions := ParseWriteOptions(LFileObj);
 
         LWriteResult := WriteTextFile(LPath, LContent, FCacheManager, LOptions);
-        LResultsArr.AddElement(BuildFileResult(LPath, LWriteResult));
+        LResultsArr.AddElement(BuildFileResult(LPath, LWriteResult, LOptions.DryRun));
       except
+        on E: EUnsupportedCharsError do
+        begin
+          LResultsArr.AddElement(BuildUnsupportedCharsJson(LPath, E));
+          Inc(LErrorCount);
+        end;
+        on E: EBinaryDfmError do
+        begin
+          LResultsArr.AddElement(BuildFormatErrorJson(LPath, FORMAT_BINARY_DFM, E.Message));
+          Inc(LErrorCount);
+        end;
         on E: Exception do
         begin
           LResultsArr.AddElement(BuildFileError(LPath, E.Message));

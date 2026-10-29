@@ -49,11 +49,47 @@ function DetectFileEncoding(const APath: string;
 /// </summary>
 function DetectLineEnding(const ABytes: TBytes): TLineEnding;
 
+/// <summary>
+///   Returns True when the bytes are a binary Delphi form (DFM/XFM/FMX):
+///   either the raw 'TPF0' stream signature or a resource header
+///   ($FF $0A $00 ...) followed by 'TPF0'. Such files are not text and must
+///   not be decoded or rewritten as text.
+/// </summary>
+function IsBinaryDfm(const ABytes: TBytes): Boolean;
+
 implementation
 
 uses
   System.Math,
   Encoding.Heuristics;
+
+function IsBinaryDfm(const ABytes: TBytes): Boolean;
+const
+  SIGNATURE: array[0..3] of Byte = ($54, $50, $46, $30); // 'TPF0'
+  // The resource header holds the upper-case form name, flags and size
+  // before the signature; real headers are far shorter than this limit.
+  MAX_HEADER = 512;
+
+  function SignatureAt(AOffset: Integer): Boolean;
+  begin
+    Result := (AOffset + 4 <= Length(ABytes)) and
+      (ABytes[AOffset] = SIGNATURE[0]) and (ABytes[AOffset + 1] = SIGNATURE[1]) and
+      (ABytes[AOffset + 2] = SIGNATURE[2]) and (ABytes[AOffset + 3] = SIGNATURE[3]);
+  end;
+
+var
+  I: Integer;
+begin
+  if SignatureAt(0) then
+    Exit(True);
+  if (Length(ABytes) < 8) or (ABytes[0] <> $FF) or (ABytes[1] <> $0A) or
+     (ABytes[2] <> $00) then
+    Exit(False);
+  for I := 3 to Min(MAX_HEADER, Length(ABytes) - 4) do
+    if SignatureAt(I) then
+      Exit(True);
+  Result := False;
+end;
 
 function DetectBom(const ABytes: TBytes): TBomInfo;
 begin

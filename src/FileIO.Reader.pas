@@ -27,7 +27,47 @@ type
     ReturnedLines: Integer;
     LineNumberStart: Integer; // 1-based line number of first returned line (0 if empty)
     MatchCount: Integer;      // Number of lines matching searchText (0 if no search)
+    Source: TEncodingSource;  // Where the encoding decision came from
   end;
+
+  /// <summary>
+  ///   Raised when a file is a binary Delphi form and therefore cannot be
+  ///   read, edited or (without force) overwritten as text.
+  /// </summary>
+  EBinaryDfmError = class(Exception)
+  public
+    constructor CreateForPath(const APath, AAction: string);
+  end;
+
+const
+  /// <summary>Value of the "format" field for a binary Delphi form.</summary>
+  FORMAT_BINARY_DFM = 'binary-dfm';
+  /// <summary>Value of the "format" field for a text file.</summary>
+  FORMAT_TEXT = 'text';
+  /// <summary>
+  ///   Encoding used when non-ASCII content is written to a pure-ASCII file
+  ///   without an explicit encoding or override.
+  /// </summary>
+  ASCII_WRITE_RECOMMENDATION = TEncodingId.Windows1252;
+  /// <summary>Explains what an ASCII result means.</summary>
+  ASCII_NOTE =
+    'The file contains only 7-bit bytes, which read identically in every ' +
+    'ASCII-compatible encoding (Windows-1252, ISO-8859-x, UTF-8 without BOM). ' +
+    'The confidence only states that no byte is above 0x7F; it does not tell ' +
+    'which encoding was intended. Non-ASCII content is written as ' +
+    'writeRecommendation unless an encoding or override is given.';
+
+/// <summary>Reads the complete file into a byte array.</summary>
+function ReadFileBytes(const APath: string): TBytes;
+
+/// <summary>
+///   Resolves the encoding of file bytes with the same priority used by every
+///   tool: 1) BOM, 2) per-file manual override, 3) pattern override,
+///   4) heuristic detection of the complete content. Line endings are always
+///   detected from the bytes.
+/// </summary>
+function ResolveFileEncoding(const ABytes: TBytes; ACache: TEncodingCache;
+  const ARelativePath: string; out ASource: TEncodingSource): TDetectedEncoding;
 
 /// <summary>
 ///   Reads a file, detects (or retrieves cached) encoding, and returns
@@ -52,11 +92,20 @@ implementation
 uses
   System.IOUtils,
   System.Math,
-  System.DateUtils,
-  Encoding.Detector,
-  MCP.Logging;
+  Encoding.Detector;
 
-function ReadAllBytes(const APath: string): TBytes;
+{ EBinaryDfmError }
+
+constructor EBinaryDfmError.CreateForPath(const APath, AAction: string);
+begin
+  inherited CreateFmt(
+    'Cannot %s %s as text: it is a binary Delphi form (format "%s"). ' +
+    'Convert it to a text DFM first (IDE: right-click the form, "Text DFM"; ' +
+    'or the convert.exe command-line tool).',
+    [AAction, APath, FORMAT_BINARY_DFM]);
+end;
+
+function ReadFileBytes(const APath: string): TBytes;
 var
   LStream: TFileStream;
 begin
@@ -67,6 +116,45 @@ begin
       LStream.ReadBuffer(Result[0], LStream.Size);
   finally
     LStream.Free;
+  end;
+end;
+
+function ResolveFileEncoding(const ABytes: TBytes; ACache: TEncodingCache;
+  const ARelativePath: string; out ASource: TEncodingSource): TDetectedEncoding;
+var
+  LBom: TBomInfo;
+  LEntry: TCacheEntry;
+  LOverrideId: TEncodingId;
+begin
+  LBom := DetectBom(ABytes);
+  if LBom.Detected then
+  begin
+    Result.Id := LBom.EncodingId;
+    Result.HasBom := True;
+    Result.Confidence := 1.0;
+    Result.LineEnding := DetectLineEnding(ABytes);
+    ASource := TEncodingSource.Bom;
+  end
+  else if ACache.TryGet(ARelativePath, LEntry) and LEntry.Manual then
+  begin
+    Result.Id := LEntry.EncodingId;
+    Result.HasBom := False;
+    Result.Confidence := 1.0;
+    Result.LineEnding := DetectLineEnding(ABytes);
+    ASource := TEncodingSource.ManualOverride;
+  end
+  else if ACache.TryGetPatternOverride(ARelativePath, LOverrideId) then
+  begin
+    Result.Id := LOverrideId;
+    Result.HasBom := False;
+    Result.Confidence := 1.0;
+    Result.LineEnding := DetectLineEnding(ABytes);
+    ASource := TEncodingSource.PatternOverride;
+  end
+  else
+  begin
+    Result := DetectEncoding(ABytes);
+    ASource := TEncodingSource.Detected;
   end;
 end;
 
@@ -307,65 +395,28 @@ var
   LRelative: string;
   LEntry: TCacheEntry;
   LHasCached: Boolean;
-  LOverrideId: TEncodingId;
-  LBom: TBomInfo;
+  LPreviousLineEnding: TLineEnding;
+  LSource: TEncodingSource;
   LFileSize: Int64;
   LFileTimestamp: TDateTime;
 begin
   if not TFile.Exists(APath) then
     raise Exception.CreateFmt('File not found: %s', [APath]);
-  LBytes := ReadAllBytes(APath);
+  LBytes := ReadFileBytes(APath);
+  if IsBinaryDfm(LBytes) then
+    raise EBinaryDfmError.CreateForPath(APath, 'read');
   LFileSize := Length(LBytes);
   LFileTimestamp := TFile.GetLastWriteTime(APath);
   Result := Default(TReadResult);
   Result.BytesRead := LFileSize;
-  Result.FromCache := False;
 
   ACacheManager.Resolve(APath, LCache, LRelative);
   LHasCached := LCache.TryGet(LRelative, LEntry);
 
-  // Invalidate non-manual cache if file has changed since detection
-  if LHasCached and (not LEntry.Manual) and
-     ((LEntry.FileSize <> LFileSize) or
-      (Abs(LEntry.FileTimestamp - LFileTimestamp) > (1 / SecsPerDay))) then
-  begin
-    LHasCached := False;
-  end;
-
-  // Determine encoding priority:
-  //   1) BOM (always 100% certain)
-  //   2) Cached manual override (set by user)
-  //   3) Extension override from cache (e.g. *.pas → Windows-1252)
-  //   4) Cached auto-detected entry if file is unchanged (we re-detect for safety)
-  //   5) Fresh detection
-  LBom := DetectBom(LBytes);
-  if LBom.Detected then
-  begin
-    LDetected.Id := LBom.EncodingId;
-    LDetected.HasBom := True;
-    LDetected.Confidence := 1.0;
-    LDetected.LineEnding := DetectLineEnding(LBytes);
-  end
-  else if LHasCached and LEntry.Manual then
-  begin
-    LDetected.Id := LEntry.EncodingId;
-    LDetected.HasBom := LEntry.HasBom;
-    LDetected.Confidence := 1.0;
-    LDetected.LineEnding := DetectLineEnding(LBytes);
-    Result.FromCache := True;
-  end
-  else if LCache.TryGetExtensionOverride(LRelative, LOverrideId) then
-  begin
-    LDetected.Id := LOverrideId;
-    LDetected.HasBom := False;
-    LDetected.Confidence := 0.95;
-    LDetected.LineEnding := DetectLineEnding(LBytes);
-    Result.FromCache := True;
-  end
-  else
-  begin
-    LDetected := DetectEncoding(LBytes);
-  end;
+  LDetected := ResolveFileEncoding(LBytes, LCache, LRelative, LSource);
+  Result.Source := LSource;
+  Result.FromCache := LSource in [TEncodingSource.ManualOverride,
+    TEncodingSource.PatternOverride];
 
   Result.Content := DecodeBytes(LBytes, LDetected.Id, LDetected.HasBom);
   Result.EncodingId := LDetected.Id;
@@ -381,13 +432,19 @@ begin
       AStartLine, AEndLine, AContextLines,
       Result.TotalLines, Result.ReturnedLines, Result.LineNumberStart);
 
-  // Update cache (unless there is a manual entry we should not overwrite)
+  // Update cache (unless there is a manual entry we should not overwrite).
+  // A file without line breaks keeps the style remembered from earlier reads,
+  // so the writer's fallback can still honour it.
   if not (LHasCached and LEntry.Manual) then
   begin
+    LPreviousLineEnding := LEntry.LineEnding;
     LEntry := Default(TCacheEntry);
     LEntry.EncodingId := LDetected.Id;
     LEntry.HasBom := LDetected.HasBom;
     LEntry.LineEnding := LDetected.LineEnding;
+    if (LEntry.LineEnding = TLineEnding.Unknown) and LHasCached and
+       (LPreviousLineEnding in [TLineEnding.Lf, TLineEnding.CrLf, TLineEnding.Cr]) then
+      LEntry.LineEnding := LPreviousLineEnding;
     LEntry.Manual := False;
     LEntry.DetectedAt := Now;
     LEntry.FileSize := LFileSize;

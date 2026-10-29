@@ -84,19 +84,6 @@ begin
   end;
 end;
 
-function GetStringArg(AArgs: TJSONObject; const AName: string;
-  const ADefault: string = ''): string;
-var
-  LValue: TJSONValue;
-begin
-  if AArgs = nil then Exit(ADefault);
-  LValue := AArgs.GetValue(AName);
-  if LValue is TJSONString then
-    Result := TJSONString(LValue).Value
-  else
-    Result := ADefault;
-end;
-
 function MatchesPattern(const AFileName, APattern: string): Boolean;
 begin
   if APattern = '' then
@@ -115,7 +102,7 @@ var
 begin
   LPath := GetStringArg(AArguments, 'path', '');
   if LPath = '' then
-    raise Exception.Create('Missing required argument "path"');
+    raise EInvalidArgumentError.Create('Missing required argument "path"');
   ValidatePathInWorkspace(LPath);
 
   if not TDirectory.Exists(LPath) then

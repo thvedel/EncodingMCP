@@ -66,6 +66,14 @@ function IsPathInWorkspace(const APath: string): Boolean;
 function FindWorkspaceRoot(const APath: string): string;
 
 /// <summary>
+///   Returns the outermost workspace directory for APath. It holds pattern
+///   overrides and receives new sidecar entries: the enclosing configured root,
+///   or without configured roots the nearest version-control root (.git, .svn,
+///   .hg) at or above the path, falling back to FindWorkspaceRoot.
+/// </summary>
+function FindOutermostRoot(const APath: string): string;
+
+/// <summary>
 ///   Returns a relative path from the workspace root to the target file. Uses '/'
 ///   as separator for portability in the sidecar cache.
 /// </summary>
@@ -167,18 +175,21 @@ begin
       Result := GWorkspaceRoots[I];
 end;
 
+function HasVcsMarker(const ADir: string): Boolean;
+begin
+  Result := TDirectory.Exists(TPath.Combine(ADir, '.git')) or
+    TFile.Exists(TPath.Combine(ADir, '.git')) or
+    TDirectory.Exists(TPath.Combine(ADir, '.svn')) or
+    TDirectory.Exists(TPath.Combine(ADir, '.hg'));
+end;
+
 function HasMarker(const ADir: string): Boolean;
 var
   LFiles: TStringDynArray;
 begin
-  if TDirectory.Exists(TPath.Combine(ADir, '.git')) or
-     TFile.Exists(TPath.Combine(ADir, '.git')) then
+  if HasVcsMarker(ADir) then
     Exit(True);
   if TDirectory.Exists(TPath.Combine(ADir, '.windsurf')) then
-    Exit(True);
-  if TDirectory.Exists(TPath.Combine(ADir, '.svn')) then
-    Exit(True);
-  if TDirectory.Exists(TPath.Combine(ADir, '.hg')) then
     Exit(True);
   // Delphi project markers
   LFiles := TDirectory.GetFiles(ADir, '*.dproj');
@@ -256,6 +267,30 @@ begin
     Result := ExcludeTrailingPathDelimiter(LLimit)
   else
     Result := TPath.GetDirectoryName(LFull);
+end;
+
+function FindOutermostRoot(const APath: string): string;
+var
+  LFull, LLimit, LDir, LParent: string;
+begin
+  LFull := TPath.GetFullPath(APath);
+  LLimit := EnclosingRoot(LFull);
+  if LLimit <> '' then
+    Exit(ExcludeTrailingPathDelimiter(LLimit));
+  if TDirectory.Exists(LFull) then
+    LDir := LFull
+  else
+    LDir := TPath.GetDirectoryName(LFull);
+  while LDir <> '' do
+  begin
+    if HasVcsMarker(LDir) then
+      Exit(LDir);
+    LParent := TPath.GetDirectoryName(LDir);
+    if (LParent = '') or (LParent = LDir) then
+      Break;
+    LDir := LParent;
+  end;
+  Result := FindWorkspaceRoot(LFull);
 end;
 
 function PrimaryWorkspaceRoot: string;

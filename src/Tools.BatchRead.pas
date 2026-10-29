@@ -33,7 +33,8 @@ uses
   System.Generics.Collections,
   Encoding.Types,
   Encoding.Workspace,
-  FileIO.Reader;
+  FileIO.Reader,
+  Tools.ReadFile;
 
 { TBatchReadTool }
 
@@ -149,45 +150,6 @@ begin
   end;
 end;
 
-function GetStringArg(AObj: TJSONObject; const AName: string;
-  const ADefault: string = ''): string;
-var
-  LValue: TJSONValue;
-begin
-  if AObj = nil then Exit(ADefault);
-  LValue := AObj.GetValue(AName);
-  if LValue is TJSONString then
-    Result := TJSONString(LValue).Value
-  else
-    Result := ADefault;
-end;
-
-function GetIntArg(AObj: TJSONObject; const AName: string;
-  ADefault: Integer = 0): Integer;
-var
-  LValue: TJSONValue;
-begin
-  if AObj = nil then Exit(ADefault);
-  LValue := AObj.GetValue(AName);
-  if LValue is TJSONNumber then
-    Result := TJSONNumber(LValue).AsInt
-  else
-    Result := ADefault;
-end;
-
-function GetBoolArg(AObj: TJSONObject; const AName: string;
-  ADefault: Boolean): Boolean;
-var
-  LValue: TJSONValue;
-begin
-  if AObj = nil then Exit(ADefault);
-  LValue := AObj.GetValue(AName);
-  if LValue is TJSONBool then
-    Result := TJSONBool(LValue).AsBoolean
-  else
-    Result := ADefault;
-end;
-
 /// <summary>
 ///   Builds the JSON result object for a single file read.
 /// </summary>
@@ -197,19 +159,7 @@ begin
   Result := TJSONObject.Create;
   try
     Result.AddPair('path', APath);
-    Result.AddPair('encoding', EncodingIdName(AResult.EncodingId));
-    Result.AddPair('hasBom', TJSONBool.Create(AResult.HasBom));
-    Result.AddPair('lineEnding', LineEndingName(AResult.LineEnding));
-    Result.AddPair('confidence', TJSONNumber.Create(AResult.Confidence));
-    Result.AddPair('fromCache', TJSONBool.Create(AResult.FromCache));
-    Result.AddPair('bytesRead', TJSONNumber.Create(AResult.BytesRead));
-    Result.AddPair('totalLines', TJSONNumber.Create(AResult.TotalLines));
-    Result.AddPair('returnedLines', TJSONNumber.Create(AResult.ReturnedLines));
-    Result.AddPair('lineNumberStart', TJSONNumber.Create(AResult.LineNumberStart));
-    if AResult.MatchCount > 0 then
-      Result.AddPair('matchCount', TJSONNumber.Create(AResult.MatchCount));
-    if not AMetadataOnly then
-      Result.AddPair('content', AResult.Content);
+    AddReadResultFields(Result, AResult, AMetadataOnly);
   except
     Result.Free;
     raise;
@@ -245,11 +195,11 @@ var
   I: Integer;
 begin
   if AArguments = nil then
-    raise Exception.Create('Missing required argument "files"');
+    raise EInvalidArgumentError.Create('Missing required argument "files"');
 
   LFilesArr := AArguments.GetValue('files') as TJSONArray;
   if (LFilesArr = nil) or (LFilesArr.Count = 0) then
-    raise Exception.Create('Missing or empty required argument "files"');
+    raise EInvalidArgumentError.Create('Missing or empty required argument "files"');
 
   LErrorCount := 0;
   LResultsArr := TJSONArray.Create;
@@ -281,6 +231,11 @@ begin
           LStartLine, LEndLine, LContextLines, LSearchText);
         LResultsArr.AddElement(BuildFileResult(LPath, LReadResult, LMetadataOnly));
       except
+        on E: EBinaryDfmError do
+        begin
+          LResultsArr.AddElement(BuildFormatErrorJson(LPath, FORMAT_BINARY_DFM, E.Message));
+          Inc(LErrorCount);
+        end;
         on E: Exception do
         begin
           LResultsArr.AddElement(BuildFileError(LPath, E.Message));

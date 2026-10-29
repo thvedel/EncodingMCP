@@ -1,4 +1,4 @@
-unit Tests.FileIO.EditFile;
+﻿unit Tests.FileIO.EditFile;
 
 /// <summary>
 ///   Tests for the edit_text_file functionality (search/replace and
@@ -10,7 +10,8 @@ interface
 uses
   DUnitX.TestFramework,
   System.SysUtils,
-  Encoding.CacheManager;
+  Encoding.CacheManager,
+  FileIO.Editor;
 
 type
   [TestFixture]
@@ -21,6 +22,7 @@ type
     function MakeTempPath(const AFileName: string): string;
     procedure WriteUtf8File(const APath, AContent: string);
     function ReadFileContent(const APath: string): string;
+    function MakeReplace(const AOldText, ANewText: string): TEditOptions;
   public
     [Setup]
     procedure Setup;
@@ -82,6 +84,18 @@ type
     procedure MultiEdit_EmptyArray_Raises;
     [Test]
     procedure MultiEdit_MixedModes;
+
+    // Encoding safety
+    [Test]
+    procedure Edit_AsciiFile_NonAsciiText_UpgradesToWindows1252;
+    [Test]
+    procedure Edit_DryRun_ReportsTargetEncodingWithoutWriting;
+    [Test]
+    procedure Edit_Utf16Le_PreservesEncodingAndBom;
+    [Test]
+    procedure Edit_Utf16Be_PreservesEncodingAndBom;
+    [Test]
+    procedure Tool_EmptyEditsArray_ReportsEmptyArrayError;
   end;
 
 implementation
@@ -89,9 +103,12 @@ implementation
 uses
   System.IOUtils,
   System.Classes,
+  System.JSON,
+  System.Generics.Collections,
   Encoding.Types,
   FileIO.Reader,
-  FileIO.Editor;
+  MCP.Tools,
+  Tools.EditFile;
 
 { TEditFileTests }
 
@@ -118,6 +135,13 @@ var
 begin
   LResult := ReadTextFile(APath, FCacheManager);
   Result := LResult.Content;
+end;
+
+function TEditFileTests.MakeReplace(const AOldText, ANewText: string): TEditOptions;
+begin
+  Result := MakeDefaultEditOptions;
+  Result.OldText := AOldText;
+  Result.NewText := ANewText;
 end;
 
 procedure TEditFileTests.Setup;
@@ -539,6 +563,119 @@ begin
   Assert.IsTrue(LResult.Changed);
   Assert.AreEqual(2, LResult.Replacements);
   Assert.AreEqual('first' + #10 + 'replaced' + #10 + 'line3', ReadFileContent(LPath));
+end;
+
+procedure TEditFileTests.Edit_AsciiFile_NonAsciiText_UpgradesToWindows1252;
+var
+  LPath: string;
+  LOptions: TEditOptions;
+  LResult: TEditResult;
+  LBytes: TBytes;
+begin
+  // Regression: "// X" -> "// o-slash" in an ASCII file produced BOM-less
+  // UTF-8 and the response still said "ASCII".
+  LPath := MakeTempPath('ascii.pas');
+  TFile.WriteAllBytes(LPath, TEncoding.ASCII.GetBytes('// X'#13#10));
+  LOptions := MakeDefaultEditOptions;
+  LOptions.OldText := 'X';
+  LOptions.NewText := #$00F8;
+
+  LResult := EditTextFile(LPath, FCacheManager, LOptions);
+
+  LBytes := TFile.ReadAllBytes(LPath);
+  Assert.AreEqual(TEncodingId.Windows1252, LResult.EncodingId);
+  Assert.AreEqual(TEncodingId.Ascii, LResult.UpgradedFrom);
+  Assert.IsTrue(Length(LResult.Warnings) > 0);
+  Assert.AreEqual(6, Integer(Length(LBytes)));
+  Assert.AreEqual(Byte($F8), LBytes[3]);
+end;
+
+procedure TEditFileTests.Edit_DryRun_ReportsTargetEncodingWithoutWriting;
+var
+  LPath: string;
+  LOptions: TEditOptions;
+  LResult: TEditResult;
+begin
+  LPath := MakeTempPath('dry.pas');
+  TFile.WriteAllBytes(LPath, TEncoding.ASCII.GetBytes('// X'#13#10));
+  LOptions := MakeDefaultEditOptions;
+  LOptions.OldText := 'X';
+  LOptions.NewText := #$00F8;
+  LOptions.DryRun := True;
+
+  LResult := EditTextFile(LPath, FCacheManager, LOptions);
+
+  Assert.IsTrue(LResult.Changed);
+  Assert.AreEqual(TEncodingId.Windows1252, LResult.EncodingId,
+    'A dry run must report the encoding a real edit would use');
+  Assert.AreEqual(TEncodingId.Ascii, LResult.UpgradedFrom);
+  Assert.AreEqual('// X'#13#10, TEncoding.ASCII.GetString(TFile.ReadAllBytes(LPath)));
+end;
+
+procedure TEditFileTests.Edit_Utf16Le_PreservesEncodingAndBom;
+var
+  LPath: string;
+  LBytes: TBytes;
+  LResult: TEditResult;
+begin
+  LPath := MakeTempPath('utf16le.txt');
+  TFile.WriteAllBytes(LPath, TEncoding.Unicode.GetPreamble +
+    TEncoding.Unicode.GetBytes('a'#13#10'b'#13#10));
+  LResult := EditTextFile(LPath, FCacheManager, MakeReplace('b', 'æ'));
+  Assert.AreEqual(TEncodingId.Utf16Le, LResult.EncodingId);
+  Assert.IsTrue(LResult.HasBom);
+  LBytes := TFile.ReadAllBytes(LPath);
+  Assert.AreEqual(Byte($FF), LBytes[0]);
+  Assert.AreEqual(Byte($FE), LBytes[1]);
+  Assert.AreEqual('a'#13#10'æ'#13#10, TEncoding.Unicode.GetString(LBytes, 2, Length(LBytes) - 2));
+end;
+
+procedure TEditFileTests.Edit_Utf16Be_PreservesEncodingAndBom;
+var
+  LPath: string;
+  LBytes: TBytes;
+  LResult: TEditResult;
+begin
+  LPath := MakeTempPath('utf16be.txt');
+  TFile.WriteAllBytes(LPath, TEncoding.BigEndianUnicode.GetPreamble +
+    TEncoding.BigEndianUnicode.GetBytes('a'#13#10'b'#13#10));
+  LResult := EditTextFile(LPath, FCacheManager, MakeReplace('b', 'æ'));
+  Assert.AreEqual(TEncodingId.Utf16Be, LResult.EncodingId);
+  Assert.IsTrue(LResult.HasBom);
+  LBytes := TFile.ReadAllBytes(LPath);
+  Assert.AreEqual(Byte($FE), LBytes[0]);
+  Assert.AreEqual(Byte($FF), LBytes[1]);
+  Assert.AreEqual('a'#13#10'æ'#13#10,
+    TEncoding.BigEndianUnicode.GetString(LBytes, 2, Length(LBytes) - 2));
+end;
+
+procedure TEditFileTests.Tool_EmptyEditsArray_ReportsEmptyArrayError;
+var
+  LPath: string;
+  LTool: IMcpTool;
+  LArgs: TJSONObject;
+  LRaised: Boolean;
+begin
+  LPath := MakeTempPath('tool_empty.txt');
+  WriteUtf8File(LPath, 'test');
+  LTool := TEditFileTool.Create(FCacheManager);
+  LArgs := TJSONObject.ParseJSONValue(
+    Format('{"path":"%s","edits":[]}', [LPath.Replace('\', '\\')])) as TJSONObject;
+  try
+    LRaised := False;
+    try
+      LTool.Execute(LArgs).Free;
+    except
+      on E: EEditError do
+      begin
+        LRaised := True;
+        Assert.IsTrue(E.Message.Contains('must not be empty'), E.Message);
+      end;
+    end;
+    Assert.IsTrue(LRaised, 'An empty edits array must be reported as such');
+  finally
+    LArgs.Free;
+  end;
 end;
 
 initialization

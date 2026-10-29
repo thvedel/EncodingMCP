@@ -18,7 +18,7 @@ uses
 const
   MCP_PROTOCOL_VERSION = '2024-11-05';
   SERVER_NAME = 'encoding-bridge';
-  SERVER_VERSION = '1.2.0';
+  SERVER_VERSION = '2.0.0';
 
 type
   /// <summary>
@@ -196,6 +196,7 @@ var
   LNameValue, LArgsValue: TJSONValue;
   LToolName: string;
   LTool: IMcpTool;
+  LSchema: TJSONObject;
 begin
   if not (AParams is TJSONObject) then
     raise EJsonRpcError.Create(Ord(TJsonRpcErrorCode.InvalidParams),
@@ -217,6 +218,12 @@ begin
     raise EJsonRpcError.Create(Ord(TJsonRpcErrorCode.MethodNotFound),
       Format('Unknown tool "%s"', [LToolName]));
   try
+    LSchema := LTool.BuildInputSchema;
+    try
+      ValidateArguments(LSchema, LArguments);
+    finally
+      LSchema.Free;
+    end;
     Result := LTool.Execute(LArguments);
   except
     on E: EJsonRpcError do

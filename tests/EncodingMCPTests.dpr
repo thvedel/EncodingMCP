@@ -42,7 +42,15 @@ uses
   Tools.BatchRead in '..\src\Tools.BatchRead.pas',
   Tests.Tools.BatchRead in 'Tests.Tools.BatchRead.pas',
   Tools.BatchWrite in '..\src\Tools.BatchWrite.pas',
-  Tests.Tools.BatchWrite in 'Tests.Tools.BatchWrite.pas';
+  Tests.Tools.BatchWrite in 'Tests.Tools.BatchWrite.pas',
+  Tools.WriteFile in '..\src\Tools.WriteFile.pas',
+  Tests.Encoding.Overrides in 'Tests.Encoding.Overrides.pas',
+  Tools.SetOverride in '..\src\Tools.SetOverride.pas',
+  Tools.ReadFile in '..\src\Tools.ReadFile.pas',
+  Tools.DetectEncoding in '..\src\Tools.DetectEncoding.pas',
+  Tools.EditFile in '..\src\Tools.EditFile.pas',
+  Tests.Encoding.DetectRead in 'Tests.Encoding.DetectRead.pas',
+  Tests.FileIO.EditRange in 'Tests.FileIO.EditRange.pas';
 
 procedure RunConsole;
 var

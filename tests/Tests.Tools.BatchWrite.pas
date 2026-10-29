@@ -36,6 +36,26 @@ type
     procedure BatchWrite_EmptyArray_Raises;
     [Test]
     procedure BatchWrite_WithEncodingOverride;
+    [Test]
+    procedure BatchWrite_AsciiUpgrade_ReportsUpgradeAndWarning;
+    [Test]
+    procedure BatchWrite_UnrepresentableChars_ReportsPerFileError;
+    [Test]
+    procedure BatchWrite_DryRun_ReportsWithoutWriting;
+    [Test]
+    procedure ValidateArguments_RejectsUnknownName;
+    [Test]
+    procedure ValidateArguments_RejectsWrongType;
+    [Test]
+    procedure ValidateArguments_RejectsUnknownNestedName;
+    [Test]
+    procedure ValidateArguments_AcceptsValidArguments;
+    [Test]
+    procedure ValidateArguments_TreatsNullAsAbsent;
+    [Test]
+    procedure Execute_MissingFiles_RaisesInvalidArgument;
+    [Test]
+    procedure Execute_EmptyFiles_RaisesInvalidArgument;
   end;
 
 implementation
@@ -250,6 +270,190 @@ begin
     Assert.IsFalse(LResultObj.GetValue<Boolean>('hasBom'));
   finally
     LJson.Free;
+  end;
+end;
+
+function MakeFileEntry(const APath, AContent: string): TJSONObject;
+begin
+  Result := TJSONObject.Create;
+  Result.AddPair('path', APath);
+  Result.AddPair('content', AContent);
+end;
+
+procedure TBatchWriteTests.BatchWrite_AsciiUpgrade_ReportsUpgradeAndWarning;
+var
+  LPath: string;
+  LFiles: TJSONArray;
+  LJson, LResultObj: TJSONObject;
+begin
+  LPath := MakeTempPath('ascii.pas');
+  TFile.WriteAllBytes(LPath, TEncoding.ASCII.GetBytes('// X'#13#10));
+  LFiles := TJSONArray.Create;
+  LFiles.AddElement(MakeFileEntry(LPath, '// '#$00F8#13#10));
+  LJson := ExecuteBatchWrite(FCacheManager, LFiles);
+  LFiles.Free;
+  try
+    LResultObj := LJson.GetValue<TJSONArray>('results').Items[0] as TJSONObject;
+    Assert.AreEqual('Windows-1252', LResultObj.GetValue<string>('encoding'));
+    Assert.AreEqual('ASCII', LResultObj.GetValue<string>('upgradedFrom'));
+    Assert.IsTrue(LResultObj.GetValue<TJSONArray>('warnings').Count > 0);
+  finally
+    LJson.Free;
+  end;
+  Assert.AreEqual(Byte($F8), TFile.ReadAllBytes(LPath)[3]);
+end;
+
+procedure TBatchWriteTests.BatchWrite_UnrepresentableChars_ReportsPerFileError;
+var
+  LPath: string;
+  LFiles: TJSONArray;
+  LEntry, LJson, LResultObj: TJSONObject;
+begin
+  LPath := MakeTempPath('greek.txt');
+  LFiles := TJSONArray.Create;
+  LEntry := MakeFileEntry(LPath, 'x'#$0394);
+  LEntry.AddPair('encoding', 'Windows-1252');
+  LFiles.AddElement(LEntry);
+  LFiles.AddElement(MakeFileEntry(MakeTempPath('fine.txt'), 'fine'));
+  LJson := ExecuteBatchWrite(FCacheManager, LFiles);
+  LFiles.Free;
+  try
+    Assert.AreEqual(1, LJson.GetValue<Integer>('succeeded'));
+    Assert.AreEqual(1, LJson.GetValue<Integer>('failed'));
+    LResultObj := LJson.GetValue<TJSONArray>('results').Items[0] as TJSONObject;
+    Assert.AreEqual(1, LResultObj.GetValue<Integer>('unrepresentableChars'));
+    Assert.AreEqual('Windows-1252', LResultObj.GetValue<string>('encoding'));
+  finally
+    LJson.Free;
+  end;
+  Assert.IsFalse(TFile.Exists(LPath));
+end;
+
+procedure TBatchWriteTests.BatchWrite_DryRun_ReportsWithoutWriting;
+var
+  LPath: string;
+  LFiles: TJSONArray;
+  LEntry, LJson, LResultObj: TJSONObject;
+begin
+  LPath := MakeTempPath('dry.txt');
+  LFiles := TJSONArray.Create;
+  LEntry := MakeFileEntry(LPath, 'dry');
+  LEntry.AddPair('dryRun', TJSONBool.Create(True));
+  LFiles.AddElement(LEntry);
+  LJson := ExecuteBatchWrite(FCacheManager, LFiles);
+  LFiles.Free;
+  try
+    LResultObj := LJson.GetValue<TJSONArray>('results').Items[0] as TJSONObject;
+    Assert.IsTrue(LResultObj.GetValue<Boolean>('dryRun'));
+    Assert.AreEqual('UTF-8', LResultObj.GetValue<string>('encoding'));
+  finally
+    LJson.Free;
+  end;
+  Assert.IsFalse(TFile.Exists(LPath));
+end;
+
+// Runs ValidateArguments against the batch tool's real schema.
+procedure ValidateBatchArgs(ACacheManager: TCacheManager; const AJson: string);
+var
+  LTool: IMcpTool;
+  LSchema, LArgs: TJSONObject;
+begin
+  LTool := TBatchWriteTool.Create(ACacheManager);
+  LSchema := LTool.BuildInputSchema;
+  try
+    LArgs := TJSONObject.ParseJSONValue(AJson) as TJSONObject;
+    try
+      ValidateArguments(LSchema, LArgs);
+    finally
+      LArgs.Free;
+    end;
+  finally
+    LSchema.Free;
+  end;
+end;
+
+procedure TBatchWriteTests.ValidateArguments_RejectsUnknownName;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      ValidateBatchArgs(FCacheManager,
+        '{"files":[{"path":"a","content":"b"}],"bom":true}');
+    end,
+    EInvalidArgumentError);
+end;
+
+procedure TBatchWriteTests.ValidateArguments_RejectsWrongType;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      ValidateBatchArgs(FCacheManager,
+        '{"files":[{"path":"a","content":"b","hasBom":"true"}]}');
+    end,
+    EInvalidArgumentError);
+end;
+
+procedure TBatchWriteTests.ValidateArguments_RejectsUnknownNestedName;
+begin
+  Assert.WillRaise(
+    procedure
+    begin
+      ValidateBatchArgs(FCacheManager,
+        '{"files":[{"path":"a","content":"b","bom":true}]}');
+    end,
+    EInvalidArgumentError);
+end;
+
+procedure TBatchWriteTests.ValidateArguments_AcceptsValidArguments;
+begin
+  Assert.WillNotRaise(
+    procedure
+    begin
+      ValidateBatchArgs(FCacheManager,
+        '{"files":[{"path":"a","content":"b","hasBom":true,' +
+        '"encoding":"UTF-8","lineEnding":"LF","dryRun":false}]}');
+    end);
+end;
+
+procedure TBatchWriteTests.ValidateArguments_TreatsNullAsAbsent;
+begin
+  // Clients commonly send null for omitted optional values
+  Assert.WillNotRaise(
+    procedure
+    begin
+      ValidateBatchArgs(FCacheManager,
+        '{"files":[{"path":"a","content":"b","encoding":null,"hasBom":null}]}');
+    end);
+end;
+
+procedure TBatchWriteTests.Execute_MissingFiles_RaisesInvalidArgument;
+var
+  LTool: IMcpTool;
+begin
+  LTool := TBatchWriteTool.Create(FCacheManager);
+  Assert.WillRaise(
+    procedure
+    begin
+      LTool.Execute(nil).Free;
+    end, EInvalidArgumentError);
+end;
+
+procedure TBatchWriteTests.Execute_EmptyFiles_RaisesInvalidArgument;
+var
+  LTool: IMcpTool;
+  LArgs: TJSONObject;
+begin
+  LTool := TBatchWriteTool.Create(FCacheManager);
+  LArgs := TJSONObject.ParseJSONValue('{"files":[]}') as TJSONObject;
+  try
+    Assert.WillRaise(
+      procedure
+      begin
+        LTool.Execute(LArgs).Free;
+      end, EInvalidArgumentError);
+  finally
+    LArgs.Free;
   end;
 end;
 

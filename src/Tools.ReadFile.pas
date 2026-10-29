@@ -11,7 +11,9 @@ uses
   System.SysUtils,
   System.JSON,
   MCP.Tools,
-  Encoding.CacheManager;
+  Encoding.Types,
+  Encoding.CacheManager,
+  FileIO.Reader;
 
 type
   TReadFileTool = class(TInterfacedObject, IMcpTool)
@@ -25,13 +27,24 @@ type
     function Execute(AArguments: TJSONObject): TJSONObject;
   end;
 
+/// <summary>
+///   Adds writeRecommendation and an explanatory note when the encoding is
+///   ASCII, because ASCII cannot tell which ASCII-compatible encoding the file
+///   is meant to have. Does nothing for other encodings.
+/// </summary>
+procedure AddAsciiAdvice(AJson: TJSONObject; AEncodingId: TEncodingId);
+
+/// <summary>
+///   Adds the read result fields shared by read_text_file and read_text_files.
+/// </summary>
+procedure AddReadResultFields(AJson: TJSONObject; const AResult: TReadResult;
+  AMetadataOnly: Boolean);
+
 implementation
 
 uses
   System.IOUtils,
-  Encoding.Types,
-  Encoding.Workspace,
-  FileIO.Reader;
+  Encoding.Workspace;
 
 { TReadFileTool }
 
@@ -52,7 +65,11 @@ begin
     'Read a text file with automatic encoding detection (BOM, UTF-8, Windows-1252, ' +
     'ISO-8859-1/15, UTF-16). Returns content as UTF-8 plus the detected encoding ' +
     'and line-ending style. Use this instead of generic file reads when working ' +
-    'with files that may not be UTF-8 (e.g. Delphi .pas/.dfm sources).';
+    'with files that may not be UTF-8 (e.g. Delphi .pas/.dfm sources). ' +
+    '"source" tells where the encoding came from (bom, fileOverride, ' +
+    'patternOverride, detected). For ASCII files "writeRecommendation" names ' +
+    'the encoding non-ASCII content will be written in. Binary Delphi forms are ' +
+    'rejected with "format": "binary-dfm".';
 end;
 
 function TReadFileTool.BuildInputSchema: TJSONObject;
@@ -128,41 +145,33 @@ begin
   end;
 end;
 
-function GetStringArg(AArgs: TJSONObject; const AName: string;
-  const ADefault: string = ''): string;
-var
-  LValue: TJSONValue;
+procedure AddAsciiAdvice(AJson: TJSONObject; AEncodingId: TEncodingId);
 begin
-  if AArgs = nil then Exit(ADefault);
-  LValue := AArgs.GetValue(AName);
-  if LValue is TJSONString then
-    Result := TJSONString(LValue).Value
-  else
-    Result := ADefault;
+  if AEncodingId <> TEncodingId.Ascii then
+    Exit;
+  AJson.AddPair('writeRecommendation', EncodingIdName(ASCII_WRITE_RECOMMENDATION));
+  AJson.AddPair('note', ASCII_NOTE);
 end;
 
-function GetIntArg(AArgs: TJSONObject; const AName: string; ADefault: Integer = 0): Integer;
-var
-  LValue: TJSONValue;
+procedure AddReadResultFields(AJson: TJSONObject; const AResult: TReadResult;
+  AMetadataOnly: Boolean);
 begin
-  if AArgs = nil then Exit(ADefault);
-  LValue := AArgs.GetValue(AName);
-  if LValue is TJSONNumber then
-    Result := TJSONNumber(LValue).AsInt
-  else
-    Result := ADefault;
-end;
-
-function GetBoolArg(AArgs: TJSONObject; const AName: string; ADefault: Boolean): Boolean;
-var
-  LValue: TJSONValue;
-begin
-  if AArgs = nil then Exit(ADefault);
-  LValue := AArgs.GetValue(AName);
-  if LValue is TJSONBool then
-    Result := TJSONBool(LValue).AsBoolean
-  else
-    Result := ADefault;
+  AJson.AddPair('encoding', EncodingIdName(AResult.EncodingId));
+  AJson.AddPair('hasBom', TJSONBool.Create(AResult.HasBom));
+  AJson.AddPair('lineEnding', LineEndingName(AResult.LineEnding));
+  AJson.AddPair('confidence', TJSONNumber.Create(AResult.Confidence));
+  AJson.AddPair('source', EncodingSourceName(AResult.Source));
+  AJson.AddPair('format', FORMAT_TEXT);
+  AddAsciiAdvice(AJson, AResult.EncodingId);
+  AJson.AddPair('fromCache', TJSONBool.Create(AResult.FromCache));
+  AJson.AddPair('bytesRead', TJSONNumber.Create(AResult.BytesRead));
+  AJson.AddPair('totalLines', TJSONNumber.Create(AResult.TotalLines));
+  AJson.AddPair('returnedLines', TJSONNumber.Create(AResult.ReturnedLines));
+  AJson.AddPair('lineNumberStart', TJSONNumber.Create(AResult.LineNumberStart));
+  if AResult.MatchCount > 0 then
+    AJson.AddPair('matchCount', TJSONNumber.Create(AResult.MatchCount));
+  if not AMetadataOnly then
+    AJson.AddPair('content', AResult.Content);
 end;
 
 function TReadFileTool.Execute(AArguments: TJSONObject): TJSONObject;
@@ -176,7 +185,7 @@ var
 begin
   LPath := GetStringArg(AArguments, 'path');
   if LPath = '' then
-    raise Exception.Create('Missing required argument "path"');
+    raise EInvalidArgumentError.Create('Missing required argument "path"');
   ValidatePathInWorkspace(LPath);
   LHead := GetIntArg(AArguments, 'head', 0);
   LTail := GetIntArg(AArguments, 'tail', 0);
@@ -185,24 +194,17 @@ begin
   LContextLines := GetIntArg(AArguments, 'contextLines', 0);
   LMetadataOnly := GetBoolArg(AArguments, 'metadataOnly', False);
   LSearchText := GetStringArg(AArguments, 'searchText');
-  LResult := ReadTextFile(LPath, FCacheManager, LHead, LTail, LStartLine, LEndLine,
-    LContextLines, LSearchText);
+  try
+    LResult := ReadTextFile(LPath, FCacheManager, LHead, LTail, LStartLine, LEndLine,
+      LContextLines, LSearchText);
+  except
+    on E: EBinaryDfmError do
+      Exit(BuildJsonTextResult(BuildFormatErrorJson(LPath, FORMAT_BINARY_DFM, E.Message), True));
+  end;
   LJson := TJSONObject.Create;
   try
     LJson.AddPair('path', LPath);
-    LJson.AddPair('encoding', EncodingIdName(LResult.EncodingId));
-    LJson.AddPair('hasBom', TJSONBool.Create(LResult.HasBom));
-    LJson.AddPair('lineEnding', LineEndingName(LResult.LineEnding));
-    LJson.AddPair('confidence', TJSONNumber.Create(LResult.Confidence));
-    LJson.AddPair('fromCache', TJSONBool.Create(LResult.FromCache));
-    LJson.AddPair('bytesRead', TJSONNumber.Create(LResult.BytesRead));
-    LJson.AddPair('totalLines', TJSONNumber.Create(LResult.TotalLines));
-    LJson.AddPair('returnedLines', TJSONNumber.Create(LResult.ReturnedLines));
-    LJson.AddPair('lineNumberStart', TJSONNumber.Create(LResult.LineNumberStart));
-    if LResult.MatchCount > 0 then
-      LJson.AddPair('matchCount', TJSONNumber.Create(LResult.MatchCount));
-    if not LMetadataOnly then
-      LJson.AddPair('content', LResult.Content);
+    AddReadResultFields(LJson, LResult, LMetadataOnly);
   except
     LJson.Free;
     raise;

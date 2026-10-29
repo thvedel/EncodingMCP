@@ -10,7 +10,6 @@ interface
 uses
   System.SysUtils,
   System.JSON,
-  System.Generics.Collections,
   MCP.Tools,
   Encoding.CacheManager;
 
@@ -29,9 +28,13 @@ type
 implementation
 
 uses
+  System.Generics.Collections,
   Encoding.Types,
   Encoding.Workspace,
-  FileIO.Editor;
+  FileIO.Editor,
+  FileIO.Reader,
+  FileIO.Writer,
+  Tools.WriteFile;
 
 { TEditFileTool }
 
@@ -53,15 +56,16 @@ begin
     'the file''s original encoding, BOM, and line-ending style. Use this instead ' +
     'of write_text_file when you only need to change part of a file. ' +
     'Supports two modes: (1) provide oldText+newText for search/replace, or ' +
-    '(2) provide startLine+endLine+newText to replace a line range. ' +
-    'For multiple edits in one atomic operation, use the "edits" array parameter.';
-end;
-
-function MakeStringProp(const ADescription: string): TJSONObject;
-begin
-  Result := TJSONObject.Create;
-  Result.AddPair('type', 'string');
-  Result.AddPair('description', ADescription);
+    '(2) provide startLine+endLine+newText to replace a line range; an empty ' +
+    'newText deletes the lines including their line breaks, and startLine one ' +
+    'past the last line appends. Line breaks in oldText/newText are converted to ' +
+    'the file''s style (the dominant style for Mixed files), so plain \n works in ' +
+    'CRLF files. For multiple edits in one atomic operation, use the "edits" ' +
+    'array: all line numbers in it refer to the ORIGINAL file (overlapping ranges ' +
+    'are rejected), and search/replace edits are applied after the ranges. The ' +
+    'response "diff" is a unified diff with one hunk per changed region; diff ' +
+    'lines are separated by \n and a line break that differs from the file''s ' +
+    'style is shown as [CRLF]/[LF]/[CR].';
 end;
 
 function MakeIntProp(const ADescription: string; AMinimum: Integer): TJSONObject;
@@ -82,19 +86,21 @@ begin
     Result.AddPair('type', 'object');
     LProps := TJSONObject.Create;
 
-    LProps.AddPair('path', MakeStringProp(
+    LProps.AddPair('path', MakeProp('string',
       'Absolute path to the file to edit. The file must exist.'));
 
-    LProps.AddPair('oldText', MakeStringProp(
+    LProps.AddPair('oldText', MakeProp('string',
       'The text to find and replace. Required for search/replace mode. ' +
       'Leave empty when using startLine/endLine range replacement.'));
 
-    LProps.AddPair('newText', MakeStringProp(
-      'The replacement text. Used in both search/replace and range modes.'));
+    LProps.AddPair('newText', MakeProp('string',
+      'The replacement text. Used in both search/replace and range modes. ' +
+      'In range mode an empty newText deletes the line range completely.'));
 
     LProps.AddPair('startLine', MakeIntProp(
       'Optional: 1-based start line for range replacement. ' +
-      'When set with endLine and oldText is empty, replaces the line range.', 1));
+      'When set with endLine and oldText is empty, replaces the line range. ' +
+      'One past the last line appends.', 1));
 
     LProps.AddPair('endLine', MakeIntProp(
       'Optional: 1-based end line (inclusive) for range replacement.', 1));
@@ -116,15 +122,21 @@ begin
     LEdits.AddPair('description',
       'Optional: array of edit operations to apply atomically. ' +
       'When provided, top-level oldText/newText/startLine/endLine/maxReplacements ' +
-      'are ignored. Each edit is applied sequentially; if any fails, none are written. ' +
+      'are ignored. All startLine/endLine values refer to the ORIGINAL file, not to ' +
+      'the result of earlier edits: range edits are applied from the end of the ' +
+      'file, and overlapping ranges are rejected. Search/replace edits run afterwards ' +
+      'in array order; one whose matches are created or removed by a range edit is ' +
+      'rejected as ambiguous. If any edit fails, none are written. ' +
       'Each item has: oldText, newText, startLine, endLine, maxReplacements.');
     var LEditItem := TJSONObject.Create;
     LEditItem.AddPair('type', 'object');
     var LEditItemProps := TJSONObject.Create;
-    LEditItemProps.AddPair('oldText', MakeStringProp('Text to find and replace.'));
-    LEditItemProps.AddPair('newText', MakeStringProp('Replacement text.'));
-    LEditItemProps.AddPair('startLine', MakeIntProp('1-based start line for range mode.', 1));
-    LEditItemProps.AddPair('endLine', MakeIntProp('1-based end line (inclusive) for range mode.', 1));
+    LEditItemProps.AddPair('oldText', MakeProp('string', 'Text to find and replace.'));
+    LEditItemProps.AddPair('newText', MakeProp('string', 'Replacement text.'));
+    LEditItemProps.AddPair('startLine', MakeIntProp(
+      '1-based start line in the ORIGINAL file for range mode.', 1));
+    LEditItemProps.AddPair('endLine', MakeIntProp(
+      '1-based end line (inclusive) in the ORIGINAL file for range mode.', 1));
     LEditItemProps.AddPair('maxReplacements', MakeIntProp(
       'Max replacements for this edit (default 1). 0 = unlimited.', 0));
     LEditItem.AddPair('properties', LEditItemProps);
@@ -145,42 +157,6 @@ begin
   end;
 end;
 
-function GetStringArg(AArgs: TJSONObject; const AName, ADefault: string): string;
-var
-  LValue: TJSONValue;
-begin
-  if AArgs = nil then Exit(ADefault);
-  LValue := AArgs.GetValue(AName);
-  if LValue is TJSONString then
-    Result := TJSONString(LValue).Value
-  else
-    Result := ADefault;
-end;
-
-function GetBoolArg(AArgs: TJSONObject; const AName: string; ADefault: Boolean): Boolean;
-var
-  LValue: TJSONValue;
-begin
-  if AArgs = nil then Exit(ADefault);
-  LValue := AArgs.GetValue(AName);
-  if LValue is TJSONBool then
-    Result := TJSONBool(LValue).AsBoolean
-  else
-    Result := ADefault;
-end;
-
-function GetIntArg(AArgs: TJSONObject; const AName: string; ADefault: Integer): Integer;
-var
-  LValue: TJSONValue;
-begin
-  if AArgs = nil then Exit(ADefault);
-  LValue := AArgs.GetValue(AName);
-  if LValue is TJSONNumber then
-    Result := TJSONNumber(LValue).AsInt
-  else
-    Result := ADefault;
-end;
-
 function TEditFileTool.Execute(AArguments: TJSONObject): TJSONObject;
 var
   LPath: string;
@@ -195,17 +171,18 @@ var
 begin
   LPath := GetStringArg(AArguments, 'path', '');
   if LPath = '' then
-    raise Exception.Create('Missing required argument "path"');
+    raise EInvalidArgumentError.Create('Missing required argument "path"');
   ValidatePathInWorkspace(LPath);
 
   LDryRun := GetBoolArg(AArguments, 'dryRun', False);
 
-  // Check for multi-edit mode
+  // Check for multi-edit mode. An empty array is still multi-edit mode, so the
+  // caller gets "Edits array must not be empty" instead of a single-edit error.
   LEditsArr := nil;
   if AArguments <> nil then
     LEditsArr := AArguments.GetValue('edits') as TJSONArray;
 
-  if (LEditsArr <> nil) and (LEditsArr.Count > 0) then
+  if LEditsArr <> nil then
   begin
     // Multi-edit mode: parse edits array
     SetLength(LEdits, LEditsArr.Count);
@@ -219,7 +196,14 @@ begin
       LEdits[I].EndLine := GetIntArg(LEditObj, 'endLine', 0);
       LEdits[I].MaxReplacements := GetIntArg(LEditObj, 'maxReplacements', 1);
     end;
-    LEditResult := EditTextFileMulti(LPath, FCacheManager, LEdits, LDryRun);
+    try
+      LEditResult := EditTextFileMulti(LPath, FCacheManager, LEdits, LDryRun);
+    except
+      on E: EUnsupportedCharsError do
+        Exit(BuildJsonTextResult(BuildUnsupportedCharsJson(LPath, E), True));
+      on E: EBinaryDfmError do
+        Exit(BuildJsonTextResult(BuildFormatErrorJson(LPath, FORMAT_BINARY_DFM, E.Message), True));
+    end;
   end
   else
   begin
@@ -231,7 +215,14 @@ begin
     LOptions.EndLine := GetIntArg(AArguments, 'endLine', 0);
     LOptions.MaxReplacements := GetIntArg(AArguments, 'maxReplacements', 1);
     LOptions.DryRun := LDryRun;
-    LEditResult := EditTextFile(LPath, FCacheManager, LOptions);
+    try
+      LEditResult := EditTextFile(LPath, FCacheManager, LOptions);
+    except
+      on E: EUnsupportedCharsError do
+        Exit(BuildJsonTextResult(BuildUnsupportedCharsJson(LPath, E), True));
+      on E: EBinaryDfmError do
+        Exit(BuildJsonTextResult(BuildFormatErrorJson(LPath, FORMAT_BINARY_DFM, E.Message), True));
+    end;
   end;
 
   LJson := TJSONObject.Create;
@@ -243,6 +234,7 @@ begin
     LJson.AddPair('bytesWritten', TJSONNumber.Create(LEditResult.BytesWritten));
     LJson.AddPair('replacements', TJSONNumber.Create(LEditResult.Replacements));
     LJson.AddPair('changed', TJSONBool.Create(LEditResult.Changed));
+    AddUpgradeAndWarningFields(LJson, LEditResult.UpgradedFrom, LEditResult.Warnings, LDryRun);
     if LEditResult.Diff <> '' then
       LJson.AddPair('diff', LEditResult.Diff);
   except

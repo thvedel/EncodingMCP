@@ -27,6 +27,8 @@ uses
   Tools.BatchRead in 'src\Tools.BatchRead.pas',
   Tools.BatchWrite in 'src\Tools.BatchWrite.pas';
 
+{$R *.res}
+
 procedure ConfigureLogging;
 var
   LEnvLevel: string;

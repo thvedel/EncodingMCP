@@ -8,7 +8,7 @@
         <Platform Condition="'$(Platform)'==''">Win64</Platform>
         <ProjectGuid>{019B6418-5E87-4AF8-A497-D460B688F6D8}</ProjectGuid>
         <ProjectName Condition="'$(ProjectName)'==''">EncodingMCPTests</ProjectName>
-        <ProjectVersion>20.4</ProjectVersion>
+        <ProjectVersion>20.5</ProjectVersion>
         <TargetedPlatforms>2</TargetedPlatforms>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Config)'=='Base' or '$(Base)'!=''">
@@ -76,6 +76,24 @@
         <DCCReference Include="Tests.Encoding.Heuristics.pas"/>
         <DCCReference Include="Tests.FileIO.Roundtrip.pas"/>
         <DCCReference Include="Tests.FileIO.LineRange.pas"/>
+        <DCCReference Include="..\src\FileIO.Editor.pas"/>
+        <DCCReference Include="..\src\MCP.Tools.pas"/>
+        <DCCReference Include="..\src\Tools.ListFiles.pas"/>
+        <DCCReference Include="Tests.FileIO.EditFile.pas"/>
+        <DCCReference Include="Tests.FileIO.Enhancements.pas"/>
+        <DCCReference Include="Tests.Tools.ListFiles.pas"/>
+        <DCCReference Include="..\src\Tools.BatchRead.pas"/>
+        <DCCReference Include="Tests.Tools.BatchRead.pas"/>
+        <DCCReference Include="..\src\Tools.BatchWrite.pas"/>
+        <DCCReference Include="Tests.Tools.BatchWrite.pas"/>
+        <DCCReference Include="..\src\Tools.WriteFile.pas"/>
+        <DCCReference Include="Tests.Encoding.Overrides.pas"/>
+        <DCCReference Include="..\src\Tools.SetOverride.pas"/>
+        <DCCReference Include="..\src\Tools.ReadFile.pas"/>
+        <DCCReference Include="..\src\Tools.DetectEncoding.pas"/>
+        <DCCReference Include="..\src\Tools.EditFile.pas"/>
+        <DCCReference Include="Tests.Encoding.DetectRead.pas"/>
+        <DCCReference Include="Tests.FileIO.EditRange.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
@@ -111,4 +129,5 @@
     </ProjectExtensions>
     <Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Delphi.Targets')"/>
     <Import Project="$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj" Condition="Exists('$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj')"/>
+    <Import Project="$(MSBuildProjectName).deployproj" Condition="Exists('$(MSBuildProjectName).deployproj')"/>
 </Project>

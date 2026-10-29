@@ -25,6 +25,8 @@ __recovery/
 tests/TestInsightSettings.ini
 
 # Sidecar-cache (genereres af serveren selv, per-machine state)
+.encoding-mcp.json
+.encoding-mcp.json.tmp
 .windsurf-encoding.json
 .windsurf-encoding.json.tmp
 

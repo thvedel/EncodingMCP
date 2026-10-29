@@ -39,11 +39,11 @@ set "PLATFORM=Win64"
 set "CONFIG=Release"
 
 echo === Building main program (%PLATFORM% %CONFIG%) ===
-msbuild EncodingMCP.dproj /t:Build /p:Config=%CONFIG% /p:Platform=%PLATFORM% /verbosity:minimal /nologo
+msbuild EncodingMCP.dproj /t:Rebuild /p:Config=%CONFIG% /p:Platform=%PLATFORM% /verbosity:minimal /nologo
 if errorlevel 1 goto :err
 
 echo === Building test suite (%PLATFORM% %CONFIG%) ===
-msbuild tests\EncodingMCPTests.dproj /t:Build /p:Config=%CONFIG% /p:Platform=%PLATFORM% /verbosity:minimal /nologo
+msbuild tests\EncodingMCPTests.dproj /t:Rebuild /p:Config=%CONFIG% /p:Platform=%PLATFORM% /verbosity:minimal /nologo
 if errorlevel 1 goto :err
 
 set "MAIN_EXE=build\%PLATFORM%\%CONFIG%\EncodingMCP.exe"
