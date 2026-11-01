@@ -790,14 +790,11 @@ begin
   end;
   AResult.Diff := GenerateDiff(AReadResult.Content, AModified);
 
-  // Optimistic lock: verify file unchanged since read
-  if (not ADryRun) and
-     (Abs(TFile.GetLastWriteTime(APath) - ATimestampAtRead) > (1 / SecsPerDay)) then
-    raise EEditError.Create(
-      'File was modified by another process since it was read. Edit aborted.');
-
+  // Optimistic lock: the writer verifies, under its file lock, that the
+  // file is unchanged since it was read and raises EFileModifiedError if not.
   LWriteOptions := MakeDefaultWriteOptions;
   LWriteOptions.DryRun := ADryRun;
+  LWriteOptions.RequireUnchangedSince := ATimestampAtRead;
   LWriteResult := WriteTextFile(APath, AModified, ACacheManager, LWriteOptions);
 
   AResult.EncodingId := LWriteResult.EncodingId;

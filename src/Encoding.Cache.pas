@@ -69,7 +69,6 @@ type
     procedure ParseOverridesInto(AOverridesObj: TJSONObject;
       ATarget: TDictionary<string, TEncodingId>);
     function BuildJson: TJSONObject;
-    procedure AtomicWriteText(const APath, AText: string);
     function IsDirty: Boolean;
     function NormalizeRelative(const ARelativePath: string): string;
     function TryMatchOwnPattern(const ARelativePath: string;
@@ -85,7 +84,10 @@ type
     ///   Raises EInvalidOverridePattern for anything else.
     /// </summary>
     class function NormalizePattern(const APattern: string): string; static;
-    /// <summary>True if AFileName is a sidecar file (current, legacy or temp).</summary>
+    /// <summary>
+    ///   True if AFileName is a sidecar file (current or legacy) or one of the
+    ///   transient lock/temp files written next to it.
+    /// </summary>
     class function IsSidecarFileName(const AFileName: string): Boolean; static;
     property WorkspaceRoot: string read FWorkspaceRoot;
     property CachePath: string read FCachePath;
@@ -132,6 +134,7 @@ uses
   System.DateUtils,
   Winapi.Windows,
   Encoding.Workspace,
+  FileIO.Atomic,
   MCP.Logging;
 
 function TryGetFileStamp(const APath: string; out AWriteTime, ASize: Int64): Boolean;
@@ -311,9 +314,13 @@ end;
 class function TEncodingCache.IsSidecarFileName(const AFileName: string): Boolean;
 begin
   Result := SameText(AFileName, CACHE_FILE_NAME) or
-    SameText(AFileName, CACHE_FILE_NAME + '.tmp') or
     SameText(AFileName, LEGACY_CACHE_FILE_NAME) or
-    SameText(AFileName, LEGACY_CACHE_FILE_NAME + '.tmp');
+    // Pre-2.1 servers used a fixed "<sidecar>.tmp" name
+    SameText(AFileName, CACHE_FILE_NAME + '.tmp') or
+    SameText(AFileName, LEGACY_CACHE_FILE_NAME + '.tmp') or
+    (IsTransientFileName(AFileName) and
+     (AFileName.StartsWith(CACHE_FILE_NAME, True) or
+      AFileName.StartsWith(LEGACY_CACHE_FILE_NAME, True)));
 end;
 
 function TEncodingCache.NormalizeRelative(const ARelativePath: string): string;
@@ -581,74 +588,56 @@ begin
   end;
 end;
 
-procedure TEncodingCache.AtomicWriteText(const APath, AText: string);
-var
-  LTempPath: string;
-  LBytes: TBytes;
-  LStream: TFileStream;
-  LMoved: Boolean;
-begin
-  LTempPath := APath + '.tmp';
-  // Write UTF-8 content to temp file
-  LBytes := TEncoding.UTF8.GetBytes(AText);
-  LStream := TFileStream.Create(LTempPath, fmCreate);
-  try
-    if Length(LBytes) > 0 then
-      LStream.WriteBuffer(LBytes[0], Length(LBytes));
-  finally
-    LStream.Free;
-  end;
-  // Atomic rename (overwrites existing). If both the rename and the fallback
-  // fail, the temp file is removed so no stray .tmp is left next to the cache.
-  LMoved := False;
-  try
-    if MoveFileEx(PChar(LTempPath), PChar(APath),
-         MOVEFILE_REPLACE_EXISTING or MOVEFILE_WRITE_THROUGH) then
-      LMoved := True
-    else
-    begin
-      // Fallback: delete + rename if MoveFileEx fails (e.g. due to antivirus)
-      TLog.Warning('MoveFileEx failed for cache, trying fallback: %s',
-        [SysErrorMessage(GetLastError)]);
-      if TFile.Exists(APath) then
-        TFile.Delete(APath);
-      TFile.Move(LTempPath, APath);
-      LMoved := True;
-    end;
-  finally
-    if (not LMoved) and TFile.Exists(LTempPath) then
-      TFile.Delete(LTempPath);
-  end;
-end;
-
 procedure TEncodingCache.Save;
 var
+  LLock: TFileLock;
   LJson: TJSONObject;
   LText: string;
 begin
   if not IsDirty then
     Exit;
-  // Merge pending changes on top of the current disk state, so entries from
-  // other instances and manual edits are kept and removals stay removed
-  ReloadFromDisk;
-  LJson := BuildJson;
+  // The merge below reads the sidecar and writes it back; holding the lock
+  // across both steps stops a concurrent instance from losing its entries.
+  // On failure the pending changes are kept and retried by the next Save.
   try
-    LText := LJson.Format(2);
-  finally
-    LJson.Free;
-  end;
-  try
-    AtomicWriteText(FCachePath, LText);
+    LLock := TFileLock.Create(FCachePath);
   except
-    on E: Exception do
+    on E: EFileLockedError do
     begin
-      TLog.Error('Failed to save cache to %s: %s', [FCachePath, E.Message]);
+      TLog.Error('Failed to lock cache %s: %s', [FCachePath, E.Message]);
+      Exit;
+    end;
+    on E: EOSError do
+    begin
+      TLog.Error('Failed to lock cache %s: %s', [FCachePath, E.Message]);
       Exit;
     end;
   end;
-  FPendingFiles.Clear;
-  FPendingOverrides.Clear;
-  RecordDiskStamp;
+  try
+    // Merge pending changes on top of the current disk state, so entries from
+    // other instances and manual edits are kept and removals stay removed
+    ReloadFromDisk;
+    LJson := BuildJson;
+    try
+      LText := LJson.Format(2);
+    finally
+      LJson.Free;
+    end;
+    try
+      WriteBytesAtomic(FCachePath, TEncoding.UTF8.GetBytes(LText));
+    except
+      on E: Exception do
+      begin
+        TLog.Error('Failed to save cache to %s: %s', [FCachePath, E.Message]);
+        Exit;
+      end;
+    end;
+    FPendingFiles.Clear;
+    FPendingOverrides.Clear;
+    RecordDiskStamp;
+  finally
+    LLock.Free;
+  end;
   if FMigrateLegacy then
   begin
     FMigrateLegacy := False;

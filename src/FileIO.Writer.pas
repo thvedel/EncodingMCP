@@ -22,6 +22,8 @@ type
     CreateIfMissing: Boolean;            // True = create if file does not exist
     DryRun: Boolean;                     // True = compute the result without writing
     Force: Boolean;                      // True = allow replacing a binary DFM with text
+    RequireUnchangedSince: TDateTime;    // 0 = not set; otherwise the file's last-write time
+                                         // must still match (within 1 s) when the lock is held
   end;
 
   TWriteResult = record
@@ -50,6 +52,16 @@ type
     property EncodingId: TEncodingId read FEncodingId;
   end;
 
+  /// <summary>
+  ///   Raised when AOptions.RequireUnchangedSince is set and the file's
+  ///   last-write time no longer matches it. Checked while the file lock is
+  ///   held, so no other writer can slip in between the check and the write.
+  /// </summary>
+  EFileModifiedError = class(Exception)
+  public
+    constructor Create(const APath: string);
+  end;
+
 function MakeDefaultWriteOptions: TWriteOptions;
 
 /// <summary>
@@ -67,6 +79,11 @@ function MakeDefaultWriteOptions: TWriteOptions;
 ///   target encoding raises EUnsupportedCharsError. An existing binary Delphi
 ///   form raises EBinaryDfmError unless AOptions.Force is set; with Force it
 ///   is replaced as if the file were new.
+///   Unless AOptions.DryRun is set, the whole sequence (re-read, resolve,
+///   convert, write) runs under an exclusive cross-process lock on the file
+///   (see FileIO.Atomic). Waiting longer than LOCK_TIMEOUT_MS raises
+///   EFileLockedError; a stale AOptions.RequireUnchangedSince raises
+///   EFileModifiedError. In both cases nothing is written.
 /// </summary>
 function WriteTextFile(const APath: string; const AContent: string;
   ACacheManager: TCacheManager; const AOptions: TWriteOptions): TWriteResult;
@@ -94,10 +111,9 @@ uses
   System.IOUtils,
   System.Math,
   System.Character,
-  Winapi.Windows,
   Encoding.Detector,
   FileIO.Reader,
-  MCP.Logging;
+  FileIO.Atomic;
 
 { EUnsupportedCharsError }
 
@@ -114,6 +130,15 @@ begin
   FEncodingId := AEncodingId;
 end;
 
+{ EFileModifiedError }
+
+constructor EFileModifiedError.Create(const APath: string);
+begin
+  inherited CreateFmt(
+    'File was modified by another process since it was read: %s. ' +
+    'Nothing was written. Read the file again and retry.', [APath]);
+end;
+
 function MakeDefaultWriteOptions: TWriteOptions;
 begin
   Result.EncodingOverride := TEncodingId.Unknown;
@@ -122,6 +147,7 @@ begin
   Result.CreateIfMissing := True;
   Result.DryRun := False;
   Result.Force := False;
+  Result.RequireUnchangedSince := 0;
 end;
 
 function ContainsNonAscii(const AText: string): Boolean;
@@ -238,42 +264,6 @@ begin
     AFirstSample := LBuilder.ToString;
   finally
     LBuilder.Free;
-  end;
-end;
-
-procedure WriteBytesToFile(const APath: string; const ABytes: TBytes);
-var
-  LTempPath: string;
-  LStream: TFileStream;
-  LMoved: Boolean;
-begin
-  LTempPath := APath + '.tmp';
-  LStream := TFileStream.Create(LTempPath, fmCreate);
-  try
-    if Length(ABytes) > 0 then
-      LStream.WriteBuffer(ABytes[0], Length(ABytes));
-  finally
-    LStream.Free;
-  end;
-  // Atomic rename: temp file -> final file. If both the rename and the
-  // fallback fail, the temp file is removed so no stray .tmp is left behind.
-  LMoved := False;
-  try
-    if MoveFileEx(PChar(LTempPath), PChar(APath),
-         MOVEFILE_REPLACE_EXISTING or MOVEFILE_WRITE_THROUGH) then
-      LMoved := True
-    else
-    begin
-      TLog.Warning('MoveFileEx failed, trying fallback: %s',
-        [SysErrorMessage(GetLastError)]);
-      if TFile.Exists(APath) then
-        TFile.Delete(APath);
-      TFile.Move(LTempPath, APath);
-      LMoved := True;
-    end;
-  finally
-    if (not LMoved) and TFile.Exists(LTempPath) then
-      TFile.Delete(LTempPath);
   end;
 end;
 
@@ -475,7 +465,8 @@ begin
   ACache.Put(ARelative, LEntry);
 end;
 
-function WriteTextFile(const APath: string; const AContent: string;
+// The write itself. Runs under the caller's lock unless it is a dry run.
+function DoWriteTextFile(const APath: string; const AContent: string;
   ACacheManager: TCacheManager; const AOptions: TWriteOptions): TWriteResult;
 var
   LCache: TEncodingCache;
@@ -491,6 +482,12 @@ begin
   LExisting := TFile.Exists(APath);
   if (not LExisting) and (not AOptions.CreateIfMissing) then
     raise Exception.CreateFmt('File does not exist and CreateIfMissing is false: %s', [APath]);
+
+  // Optimistic concurrency: now that the lock is held, the timestamp cannot
+  // change between this check and the rename below.
+  if LExisting and (not AOptions.DryRun) and (AOptions.RequireUnchangedSince <> 0) and
+     (Abs(TFile.GetLastWriteTime(APath) - AOptions.RequireUnchangedSince) > (1 / SecsPerDay)) then
+    raise EFileModifiedError.Create(APath);
 
   ACacheManager.Resolve(APath, LCache, LRelative);
   ResolveBaseEncoding(APath, LExisting, AOptions.Force, LCache, LRelative, Result, LTarget);
@@ -533,10 +530,30 @@ begin
   if AOptions.DryRun then
     Exit;
 
-  if not LExisting then
-    TDirectory.CreateDirectory(TPath.GetDirectoryName(APath));
-  WriteBytesToFile(APath, LFinal);
+  WriteBytesAtomic(APath, LFinal);
   UpdateCacheAfterWrite(APath, LCache, LRelative, LTarget, Result);
+end;
+
+function WriteTextFile(const APath: string; const AContent: string;
+  ACacheManager: TCacheManager; const AOptions: TWriteOptions): TWriteResult;
+var
+  LLock: TFileLock;
+begin
+  if AOptions.DryRun then
+    Exit(DoWriteTextFile(APath, AContent, ACacheManager, AOptions));
+  if not TFile.Exists(APath) then
+  begin
+    if not AOptions.CreateIfMissing then
+      raise Exception.CreateFmt('File does not exist and CreateIfMissing is false: %s', [APath]);
+    // The lock file lives next to the target, so the directory must exist first
+    TDirectory.CreateDirectory(TPath.GetDirectoryName(APath));
+  end;
+  LLock := TFileLock.Create(APath);
+  try
+    Result := DoWriteTextFile(APath, AContent, ACacheManager, AOptions);
+  finally
+    LLock.Free;
+  end;
 end;
 
 end.

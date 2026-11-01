@@ -31,6 +31,7 @@ uses
   System.Generics.Collections,
   Encoding.Types,
   Encoding.Workspace,
+  FileIO.Atomic,
   FileIO.Editor,
   FileIO.Reader,
   FileIO.Writer,
@@ -203,6 +204,10 @@ begin
         Exit(BuildJsonTextResult(BuildUnsupportedCharsJson(LPath, E), True));
       on E: EBinaryDfmError do
         Exit(BuildJsonTextResult(BuildFormatErrorJson(LPath, FORMAT_BINARY_DFM, E.Message), True));
+      on E: EFileLockedError do
+        Exit(BuildJsonTextResult(BuildConcurrencyErrorJson(LPath, 'locked', E.Message), True));
+      on E: EFileModifiedError do
+        Exit(BuildJsonTextResult(BuildConcurrencyErrorJson(LPath, 'modified', E.Message), True));
     end;
   end
   else
@@ -222,6 +227,10 @@ begin
         Exit(BuildJsonTextResult(BuildUnsupportedCharsJson(LPath, E), True));
       on E: EBinaryDfmError do
         Exit(BuildJsonTextResult(BuildFormatErrorJson(LPath, FORMAT_BINARY_DFM, E.Message), True));
+      on E: EFileLockedError do
+        Exit(BuildJsonTextResult(BuildConcurrencyErrorJson(LPath, 'locked', E.Message), True));
+      on E: EFileModifiedError do
+        Exit(BuildJsonTextResult(BuildConcurrencyErrorJson(LPath, 'modified', E.Message), True));
     end;
   end;
 

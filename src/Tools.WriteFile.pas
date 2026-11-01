@@ -55,6 +55,13 @@ procedure AddUpgradeAndWarningFields(AJson: TJSONObject;
 function BuildUnsupportedCharsJson(const APath: string;
   AError: EUnsupportedCharsError): TJSONObject;
 
+/// <summary>
+///   Builds the structured error returned when a write could not proceed
+///   because another process holds the file (reason "locked") or changed it
+///   since it was read (reason "modified"). The caller takes ownership.
+/// </summary>
+function BuildConcurrencyErrorJson(const APath, AReason, AMessage: string): TJSONObject;
+
 /// <summary>Adds the schema properties shared by the write tools.</summary>
 procedure AddWriteOptionProps(AProps: TJSONObject);
 
@@ -62,6 +69,7 @@ implementation
 
 uses
   Encoding.Workspace,
+  FileIO.Atomic,
   FileIO.Reader;
 
 { TWriteFileTool }
@@ -241,6 +249,20 @@ begin
   end;
 end;
 
+function BuildConcurrencyErrorJson(const APath, AReason, AMessage: string): TJSONObject;
+begin
+  Result := TJSONObject.Create;
+  try
+    Result.AddPair('path', APath);
+    Result.AddPair('error', AMessage);
+    Result.AddPair('reason', AReason);
+    Result.AddPair('retryable', TJSONBool.Create(True));
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
 function TWriteFileTool.Execute(AArguments: TJSONObject): TJSONObject;
 var
   LPath, LContent: string;
@@ -262,6 +284,10 @@ begin
       Exit(BuildJsonTextResult(BuildUnsupportedCharsJson(LPath, E), True));
     on E: EBinaryDfmError do
       Exit(BuildJsonTextResult(BuildFormatErrorJson(LPath, FORMAT_BINARY_DFM, E.Message), True));
+    on E: EFileLockedError do
+      Exit(BuildJsonTextResult(BuildConcurrencyErrorJson(LPath, 'locked', E.Message), True));
+    on E: EFileModifiedError do
+      Exit(BuildJsonTextResult(BuildConcurrencyErrorJson(LPath, 'modified', E.Message), True));
   end;
   LJson := TJSONObject.Create;
   try

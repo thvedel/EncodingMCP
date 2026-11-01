@@ -94,6 +94,8 @@
         <DCCReference Include="..\src\Tools.EditFile.pas"/>
         <DCCReference Include="Tests.Encoding.DetectRead.pas"/>
         <DCCReference Include="Tests.FileIO.EditRange.pas"/>
+        <DCCReference Include="..\src\FileIO.Atomic.pas"/>
+        <DCCReference Include="Tests.FileIO.Concurrency.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>

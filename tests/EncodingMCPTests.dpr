@@ -50,7 +50,9 @@ uses
   Tools.DetectEncoding in '..\src\Tools.DetectEncoding.pas',
   Tools.EditFile in '..\src\Tools.EditFile.pas',
   Tests.Encoding.DetectRead in 'Tests.Encoding.DetectRead.pas',
-  Tests.FileIO.EditRange in 'Tests.FileIO.EditRange.pas';
+  Tests.FileIO.EditRange in 'Tests.FileIO.EditRange.pas',
+  FileIO.Atomic in '..\src\FileIO.Atomic.pas',
+  Tests.FileIO.Concurrency in 'Tests.FileIO.Concurrency.pas';
 
 procedure RunConsole;
 var

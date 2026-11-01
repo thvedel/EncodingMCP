@@ -31,7 +31,8 @@ uses
   System.IOUtils,
   System.Types,
   System.Masks,
-  Encoding.Workspace;
+  Encoding.Workspace,
+  FileIO.Atomic;
 
 { TListFilesTool }
 
@@ -122,6 +123,9 @@ begin
     begin
       LRelative := Copy(LFiles[I], Length(LRoot) + 1, MaxInt);
       LRelative := LRelative.Replace('\', '/');
+      // Lock and temp files of in-flight writes are not part of the workspace
+      if IsTransientFileName(TPath.GetFileName(LFiles[I])) then
+        Continue;
       if MatchesPattern(TPath.GetFileName(LFiles[I]), LPattern) then
         LArr.Add(LRelative);
     end;

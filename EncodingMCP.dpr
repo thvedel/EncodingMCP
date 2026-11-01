@@ -25,7 +25,8 @@ uses
   Tools.EditFile in 'src\Tools.EditFile.pas',
   Tools.ListFiles in 'src\Tools.ListFiles.pas',
   Tools.BatchRead in 'src\Tools.BatchRead.pas',
-  Tools.BatchWrite in 'src\Tools.BatchWrite.pas';
+  Tools.BatchWrite in 'src\Tools.BatchWrite.pas',
+  FileIO.Atomic in 'src\FileIO.Atomic.pas';
 
 {$R *.res}
 

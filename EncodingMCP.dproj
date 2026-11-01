@@ -88,6 +88,7 @@
         <DCCReference Include="src\Tools.ListFiles.pas"/>
         <DCCReference Include="src\Tools.BatchRead.pas"/>
         <DCCReference Include="src\Tools.BatchWrite.pas"/>
+        <DCCReference Include="src\FileIO.Atomic.pas"/>
         <None Include="README.md"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>

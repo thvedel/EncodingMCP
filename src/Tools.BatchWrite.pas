@@ -31,6 +31,7 @@ implementation
 
 uses
   Encoding.Workspace,
+  FileIO.Atomic,
   FileIO.Reader,
   FileIO.Writer,
   Tools.WriteFile;
@@ -189,6 +190,16 @@ begin
         on E: EBinaryDfmError do
         begin
           LResultsArr.AddElement(BuildFormatErrorJson(LPath, FORMAT_BINARY_DFM, E.Message));
+          Inc(LErrorCount);
+        end;
+        on E: EFileLockedError do
+        begin
+          LResultsArr.AddElement(BuildConcurrencyErrorJson(LPath, 'locked', E.Message));
+          Inc(LErrorCount);
+        end;
+        on E: EFileModifiedError do
+        begin
+          LResultsArr.AddElement(BuildConcurrencyErrorJson(LPath, 'modified', E.Message));
           Inc(LErrorCount);
         end;
         on E: Exception do
