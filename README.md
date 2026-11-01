@@ -1,22 +1,53 @@
 ﻿# EncodingMCP
 
+**Let AI coding assistants read and edit text files in any encoding — without corrupting them.**
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Delphi](https://img.shields.io/badge/Delphi-12.3%2B-red.svg)](https://www.embarcadero.com/products/delphi)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20x64-blue.svg)]()
+[![Dependencies](https://img.shields.io/badge/Dependencies-none-brightgreen.svg)]()
+[![Built with Delphi](https://img.shields.io/badge/Built%20with-Delphi-red.svg)](https://www.embarcadero.com/products/delphi)
 
-MCP server ([Model Context Protocol](https://modelcontextprotocol.io/)) that solves
-the problem of AI coding tools (Windsurf, Claude Code, Claude Desktop,
-Cursor, etc.) expecting text files to be UTF-8 encoded.
+AI coding tools (GitHub Copilot, Claude Code, Cursor, Windsurf, Claude Desktop,
+…) assume that every text file is UTF-8. A great deal of real-world source code
+is not: files in Windows-1252, ISO-8859-x, UTF-16 and other encodings are the
+norm in codebases that predate UTF-8 or that target Windows tooling. When an LLM
+reads such a file as UTF-8 and writes it back, every `æ`, `ø`, `å`, `ü`, `€` or
+smart quote is silently destroyed.
 
-Many projects — particularly Delphi, C++Builder, and legacy Windows applications —
-have source files in Windows-1252, ISO-8859-1, or other 8-bit encodings. Without
-proper handling, special characters (`æ`, `ø`, `å`, `€`, smart quotes, etc.)
-get corrupted when an LLM reads or writes these files.
+EncodingMCP is an [MCP](https://modelcontextprotocol.io/) server that puts an
+encoding-aware layer between the assistant and the disk. It detects the
+encoding of each file (BOM, strict UTF-8 validation, codepage heuristics),
+hands the assistant clean UTF-8, and converts back to the file's own encoding
+on write — preserving BOM and line-ending style. Encodings are remembered per
+file in a `.encoding-mcp.json` sidecar, and explicit overrides can be set per
+file or per pattern.
 
-The server automatically detects encoding (BOM, UTF-8 validation, or heuristic
-codepage scoring) and translates between file encoding and UTF-8 on read and
-write. Encoding is remembered per file in a `.encoding-mcp.json` sidecar in
-the workspace root.
+It is **language-agnostic**. Typical candidates:
+
+- C / C++ / C# / Java projects with Windows-1252 or ISO-8859-1 sources
+- Classic VB6, VBScript and VBA exports
+- PHP, Perl and Python 2 code written before UTF-8 became the default
+- COBOL, RPG, Fortran and other mainframe or legacy sources
+- SQL scripts, `.ini`, `.reg`, `.bat`/`.cmd`, `.properties` and other config
+  and resource files
+- Localisation files, CSV exports, HTML/XML without a declaration
+- UTF-16 files produced by Windows tools
+- Delphi and C++Builder projects (`.pas`, `.dfm`, `.dpr`, `.cpp`, `.h`)
+
+## Who is this for?
+
+- Anyone who uses an AI coding assistant on a codebase that is not (entirely)
+  UTF-8 and wants to stop reviewing diffs full of `Ã¸` and `Ã¤`.
+- Teams maintaining legacy Windows applications where converting the whole
+  repository to UTF-8 is not an option (toolchain, merge history, or policy).
+- Developers working with UTF-16 or BOM-sensitive files that other tools
+  silently rewrite.
+- Delphi/C++Builder developers — the project originated there, and the
+  binary-DFM guard is one example of how non-text formats are protected.
+
+The server is a single standalone Windows executable with no runtime
+dependencies. You do **not** need Delphi to use it — only to build it from
+source.
 
 ## Quick Start
 
@@ -55,11 +86,13 @@ The result is a standalone `.exe` under `build\Win64\Release\`.
 
 ## Requirements
 
+**To use:** Windows x64. Nothing else — it is a single standalone `.exe`.
+
+**To build from source:**
+
 - Delphi 12.3 (Studio 23.0) or Delphi 13.1 (Studio 37.0) — uses only RTL
   (`System.JSON`, `System.SysUtils`, `System.Classes`, `System.IOUtils`,
   `System.Generics.*`)
-- Windows
-- No runtime dependencies — it is a single standalone `.exe`
 
 `build.bat` automatically searches for Delphi in standard locations and selects
 the newest available version:
@@ -273,14 +306,15 @@ Output (JSON in `content[0].text`):
   "lineNumberStart": 1,
   "returnedLines": 42,
   "matchCount": 3,
-  "content": "unit MainForm; ..."
+  "content": "#include \"legacy.h\" ..."
 }
 ```
 
 - `source` tells where the encoding came from: `bom`, `fileOverride`,
   `patternOverride` or `detected`.
-- `format` is `text`. A Delphi form stored in binary format is refused with an
-  error and `format: "binary-dfm"`, because it cannot be represented as text.
+- `format` is `text`. Binary files that merely look like text are refused
+  instead of being mangled; for example a Delphi form stored in binary format
+  is rejected with an error and `format: "binary-dfm"`.
 - For a pure-ASCII file the response also contains
   `writeRecommendation: "Windows-1252"` and a `note`: `ASCII` (even with high
   confidence) only means that no byte above 0x7F exists, so the codepage cannot
@@ -291,7 +325,8 @@ Output (JSON in `content[0].text`):
 Writes UTF-8 content to a file in the correct encoding. If the file exists, its
 encoding is re-checked on disk before every write (changes made by the IDE, git
 or other tools are respected), and per-file and pattern overrides apply even if
-the file has never been read. New files default to UTF-8 with BOM.
+the file has never been read. New files default to UTF-8 with BOM. Every write
+holds an exclusive lock on the file (see [Concurrency](#concurrency)).
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -349,7 +384,9 @@ Applies to `write_text_file`, `write_text_files` and `edit_text_file`:
 
 Edits a text file by search/replace or line-range replacement, preserving the
 file's original encoding, BOM, and line-ending style. The
-[encoding policy](#encoding-policy) applies.
+[encoding policy](#encoding-policy) applies. The edit is rejected with
+`reason: "modified"` if another process changed the file between the read and
+the write (see [Concurrency](#concurrency)).
 
 | Parameter | Type | Description |
 |---|---|---|
@@ -505,7 +542,10 @@ Returns relative paths from the specified directory.
 | Parameter | Type | Description |
 |---|---|---|
 | `path` | string | Absolute path to the directory to list (must be within workspace) |
-| `pattern` | string | Optional: glob pattern to filter files (e.g. `*.pas`, `*.dfm`) |
+| `pattern` | string | Optional: glob pattern to filter files (e.g. `*.c`, `*.sql`, `*.pas`) |
+
+Lock and temporary files of writes in progress (`*.lock`, `*.<pid>-<guid>.tmp`)
+are never listed.
 
 Output (JSON in `content[0].text`):
 
@@ -513,7 +553,7 @@ Output (JSON in `content[0].text`):
 {
   "path": "C:/Projects/MyApp",
   "totalFiles": 12,
-  "files": ["src/Main.pas", "src/Utils.pas", ...]
+  "files": ["src/legacy.c", "scripts/report.sql", "config.ini", "Forms/Main.pas", ...]
 }
 ```
 
@@ -607,7 +647,7 @@ at or above the requested path.
    - **Windows-1252**: preferred if printable C1 characters (€, smart quotes, ...)
    - **ISO-8859-1**: preferred if no C1 bytes
    - **ISO-8859-15**: if 0xA4 (€) seen without other C1 characters
-5. **Fallback**: Windows-1252 (Delphi/Windows default)
+5. **Fallback**: Windows-1252 (the default ANSI codepage on Western Windows)
 
 Resolution order: BOM > per-file override > pattern override > detection. A
 file without any byte above 0x7F is reported as `ASCII`; writes to it follow the
@@ -637,15 +677,22 @@ Format:
 {
   "version": 1,
   "files": {
-    "src/MainForm.pas": {
+    "src/legacy.c": {
       "encoding": "Windows-1252",
       "hasBom": false,
       "lineEnding": "CRLF",
       "detectedAt": "2026-04-30T16:21:06+02:00"
+    },
+    "scripts/report.sql": {
+      "encoding": "ISO-8859-1",
+      "hasBom": false,
+      "lineEnding": "LF",
+      "detectedAt": "2026-04-30T16:22:41+02:00"
     }
   },
   "overrides": {
-    "*.pas": "Windows-1252"
+    "*.pas": "Windows-1252",
+    "config/**/*.ini": "ISO-8859-15"
   }
 }
 ```
@@ -672,6 +719,53 @@ Written back via `write_text_file` with the same content:
 
 Bytes are identical — encoding is preserved.
 
+## Concurrency
+
+Several server instances (one per IDE window or agent session) may work in the
+same repository at the same time. Writes are therefore protected on three
+levels:
+
+- **Atomic replacement.** Content is written to a temporary file next to the
+  target and renamed over it (`MoveFileEx` with write-through), so a crash
+  never leaves a half-written file. The temporary name
+  `<file>.<pid>-<guid>.tmp` is unique per process and call, so two instances
+  never collide on it.
+- **Exclusive file lock.** Before touching a file the writer creates
+  `<file>.lock` with `CREATE_NEW`, no sharing and `FILE_FLAG_DELETE_ON_CLOSE`.
+  The whole sequence — re-read, resolve encoding, convert, rename — runs while
+  the lock is held. A second writer waits with exponential backoff (10 → 200
+  ms) for up to **2000 ms** and then fails with `reason: "locked"`. Because
+  the OS deletes the lock file when the handle closes, a crashed instance
+  cannot leave a stale lock behind.
+- **Modified-since-read check.** `edit_text_file` records the file's last-write
+  time when it reads the file and verifies it again *inside* the lock just
+  before writing. If another process changed the file in between, the edit
+  fails with `reason: "modified"` and nothing is written. The check is skipped
+  for `dryRun`.
+
+The sidecar cache uses the same lock: it reloads the sidecar, merges its
+pending changes and writes the result while holding `.encoding-mcp.json.lock`,
+so entries written by other instances are never lost.
+
+Both failures are returned as a structured error with `isError: true`:
+
+```json
+{
+  "path": "C:/Projects/MyApp/src/legacy.c",
+  "error": "File was modified by another process since it was read: ... Read the file again and retry.",
+  "reason": "modified",
+  "retryable": true
+}
+```
+
+`reason` is `locked` or `modified`; both are safe to retry (for `modified`,
+read the file again first). In `write_text_files` the error appears inline for
+the affected file and the other files are still written.
+
+Lock and temporary files are ignored by `list_files` and by the sidecar logic.
+On network shares where `CREATE_NEW` is not reliably exclusive the lock is
+best-effort; atomic replacement still applies.
+
 ## Limitations and future improvements
 
 - **Client integration**: There is no guarantee that the AI tool will actually
@@ -682,11 +776,9 @@ Bytes are identical — encoding is preserved.
 - **Large files**: Detection always analyses the whole file, so a late
   non-ASCII character is never missed. Very large files take correspondingly
   longer.
-- **Concurrent writes**: File writing (both user files and sidecar cache)
-  is atomic via temp file + rename, so a crash never leaves a half-written
-  file. The sidecar cache merges with disk content before writing, so entries from
-  other instances are preserved. However, there is no file-locking layer — with truly
-  concurrent writes to the *same* file from two instances, the last one wins.
+- **Other writers**: The file lock only coordinates processes that use the same
+  `.lock` convention. An IDE or `git checkout` writing the file directly is not
+  blocked; the modified-since-read check catches that case for edits.
 
 ## Tests
 
@@ -739,8 +831,11 @@ Tests cover:
 - Line-ending detection (CRLF/LF/Mixed)
 - End-to-end round-trip (read Windows-1252 → write back, byte comparison)
 - BOM writing and default UTF-8 BOM for new files
-- Atomic file writing (no .tmp file left behind)
+- Atomic file writing (no temp file left behind)
 - Cache merge (two instances preserve each other's entries)
+- Concurrency: unique temp names, lock wait/timeout/cleanup, lock released on
+  error, write refused while locked, modified-since-read (stale, fresh,
+  dryRun), parallel sidecar saves keep all entries
 - Line-range reading (startLine/endLine interval, clamping, priority over head/tail)
 - Edit tool: search/replace (single, multi, unlimited, max-N, deletion)
 - Edit tool: range replacement (middle, first, last, entire, clamp, invalid)
